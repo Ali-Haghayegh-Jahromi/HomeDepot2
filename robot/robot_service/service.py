@@ -379,9 +379,9 @@ class RosDriver:
             name = str(target.get('short_name') or short_name(target.get('name') or target.get('sku')))[:18]
             # big enough for the studio view, where RViz is drawn at about half size (>= 14 px letters)
             h = 1.3
-            words = name.split()
-            char_w, space_w = h * 0.5, h * 0.3       # rough glyph widths of RViz's font, in metres
-            name_w = sum(len(w) for w in words) * char_w + space_w * (len(words) - 1)
+            placed = layout.rviz_words(name, 0.0, 0.0, h)       # one marker per word, at a normal word gap
+            name_w = (placed[-1][1] - placed[0][1] + (layout.rviz_text_width(placed[0][0], h)
+                      + layout.rviz_text_width(placed[-1][0], h)) / 2) if placed else 0.0
             width = max(name_w, 4.6) + 1.6
             plate_h = 2 * h + 1.4
             # toward the middle of the store (the cross aisle and beyond), clear of the ring
@@ -392,18 +392,19 @@ class RosDriver:
             add(Marker.CUBE, px, py, 5.00, (width + 0.36, plate_h + 0.36, 0.04), (*accent, 1.0), ns='target_label')
             add(Marker.CUBE, px, py, 5.04, (width, plate_h, 0.04), (*paper, 1.0), ns='target_label')
             # one text marker per word, placed side by side: RViz draws a space very wide ("Deck   board")
-            x = px - name_w / 2
-            for w in words:
-                ww = len(w) * char_w
-                add(Marker.TEXT_VIEW_FACING, x + ww / 2, py + 0.8, 5.15, (0.0, 0.0, h), (*ink, 1.0), w, ns='target_label')
-                x += ww + space_w
+            for w, wx, _ in placed:
+                add(Marker.TEXT_VIEW_FACING, px + wx, py + 0.8, 5.15, (0.0, 0.0, h), (*ink, 1.0), w, ns='target_label')
             add(Marker.TEXT_VIEW_FACING, px - 1.15, py - 0.8, 5.15, (0.0, 0.0, h), (*accent, 1.0),
                 f"A{target.get('aisle')}", ns='target_label')
             add(Marker.CYLINDER, px, py - 0.8, 5.12, (0.3, 0.3, 0.02), (*accent, 1.0), ns='target_label')
             add(Marker.TEXT_VIEW_FACING, px + 1.15, py - 0.8, 5.15, (0.0, 0.0, h), (*accent, 1.0),
                 f"B{target.get('shelf')}", ns='target_label')
 
+        target_tag = (target or {}).get('tag_code')
         for code, light in self._lights.items():
+            # an unlit lamp only at the stop the robot is guiding to: a shelf already done leaves no dot
+            if not light.get('on') and code != target_tag:
+                continue
             x, y, z = light['x'], light['y'], light['z']
             if top:
                 z = 3.9          # above the racks, so the top view sees all of it

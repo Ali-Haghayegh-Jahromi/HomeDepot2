@@ -78,6 +78,32 @@ FRONT_OBSTACLES = [
 ENTRANCE = (3.0, 7.0)        # gap in the front wall (x0, x1); shown on the map, closed for the robot
 
 
+# RViz draws a space between words very wide ("Deck   board"), so labels are laid out one text marker
+# per word. These are rough glyph widths of its font, in units of the text height (measured on the
+# top view: "Deck" at 1.3 m is about 2.6 m wide, "ROBOT" at 0.8 m about 2.5 m).
+_NARROW = set("fijlrtI1.,'!:;| ")
+_WIDE = set('mwMW')
+
+
+def rviz_text_width(word, h):
+    """About how wide RViz draws one word (no spaces) at text height h, in metres."""
+    em = sum(0.28 if c in _NARROW else 0.85 if c in _WIDE else 0.69 if c.isupper() else 0.55 if c.isdigit() else 0.50
+             for c in word)
+    return em * h * 0.9
+
+
+def rviz_words(text, x, y, h, space=0.3):
+    """Each word of text with its centre x, laid out side by side around x: [(word, cx, y)]."""
+    words = text.split()
+    widths = [rviz_text_width(w, h) for w in words]
+    total = sum(widths) + space * h * (len(words) - 1)
+    out, left = [], x - total / 2
+    for w, ww in zip(words, widths):
+        out.append((w, left + ww / 2, y))
+        left += ww + space * h
+    return out
+
+
 def rack_boxes():
     """Every rack as (x0, y0, x1, y1): 13 rows, each in a front and a back half."""
     boxes = []

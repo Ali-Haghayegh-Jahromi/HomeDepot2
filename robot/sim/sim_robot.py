@@ -254,7 +254,8 @@ class SimRobot(Node):
         for x0, y0, x1, y1, label in L.FRONT_OBSTACLES:
             if label == 'kiosk':
                 box('kiosk', x0, y0, x1, y1, 0.0, 1.1, ACCENT)
-                add(Marker.TEXT_VIEW_FACING, 'label', x0 - 1.9, (y0 + y1) / 2, 4.9, 0, 0, 0.62, ACCENT, 1.0, 'HELP\nKIOSK')
+                add(Marker.TEXT_VIEW_FACING, 'label', x0 - 2.1, (y0 + y1) / 2 + 0.2, 4.9, 0, 0, 0.85, ACCENT, 1.0,
+                    'HELP\nKIOSK')
             else:
                 box('front', x0, y0, x1, y1, 0.0, 1.0, (0.40, 0.42, 0.45))
                 # one word per line: RViz draws spaces very wide
@@ -267,8 +268,10 @@ class SimRobot(Node):
         # the dock: a green pad with a dark ring; its label below it
         add(Marker.CYLINDER, 'dock', L.DOCK[0], L.DOCK[1], 0.01, 2.3, 2.3, 0.02, SUCCESS)
         add(Marker.CYLINDER, 'dock', L.DOCK[0], L.DOCK[1], 0.02, 2.0, 2.0, 0.02, SUCCESS_MUTED)
-        # above the pad (the robot's 3.6 m disc covers the pad and its sides when it is docked)
-        add(Marker.TEXT_VIEW_FACING, 'label', L.DOCK[0], L.DOCK[1] + 2.75, 4.9, 0, 0, 0.55, SUCCESS, 1.0, 'ROBOT\nDOCK')
+        # above the pad, clear of the robot's 3.6 m disc when it is docked and of the aisle names; one
+        # marker per word (RViz draws spaces very wide)
+        for word, wx, wy in L.rviz_words('ROBOT DOCK', L.DOCK[0], L.DOCK[1] + 2.5, 0.8):
+            add(Marker.TEXT_VIEW_FACING, 'label', wx, wy, 4.9, 0, 0, 0.8, SUCCESS, 1.0, word)
         add(Marker.TEXT_VIEW_FACING, 'label', sum(L.ENTRANCE) / 2, 0.75, 4.9, 0, 0, 0.62, INK, 1.0, 'ENTRANCE')
 
 
