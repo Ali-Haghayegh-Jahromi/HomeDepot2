@@ -17,8 +17,11 @@ import {
   ChevronDownIcon,
   EyeIcon,
   PlusIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline'
+import type { ReactNode } from 'react'
 import { money } from '../shared/api'
+import { itemSpecLine, itemTitle } from '../shared/names'
 import type { Item } from '../shared/types'
 import { photoBefore } from './Conversation'
 import { DepartmentTile } from './departments'
@@ -51,6 +54,9 @@ function Seen({ s }: { s: PhoneSession }) {
   )
 }
 
+/** The key of the tools' fold in the session's expanded list (mirrored to the stage with it). */
+const TOOLS_KEY = 'tools'
+
 const ordinal = (n: number) => n + (['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] ?? 'th')
 
 /** The catalogue's quality tier, said as what it means for the customer. */
@@ -58,6 +64,48 @@ const TIER: Record<string, { label: string; variant: 'blue' | 'green' | 'yellow'
   good: { label: 'Budget pick', variant: 'blue' },
   better: { label: 'Best value', variant: 'green' },
   best: { label: 'Pro grade', variant: 'yellow' },
+}
+
+const tierOf = (i: Item) => String(i.quality_tier ?? '').toLowerCase()
+
+/**
+ * The tier that goes without saying: the list's most common one. A badge only marks an item that
+ * differs from it (e.g. "Pro grade" on the composite board), never "Budget pick" on every row.
+ */
+function usualTier(items: Item[]): string | null {
+  const counts = new Map<string, number>()
+  for (const i of items) counts.set(tierOf(i), (counts.get(tierOf(i)) ?? 0) + 1)
+  if (counts.size < 2) return tierOf(items[0] ?? ({} as Item))
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0]
+}
+
+/** The repair parts (main items, not alternatives or tools), as the phone sums them. */
+const partsOf = (items: Item[]) => choicesOf(items).filter((c) => roleOf(c.main) !== 'tool').map((c) => c.main)
+
+/** One line under the heading: the parts' price against the budget, composed here from the list. */
+function budgetLine(items: Item[], budget: number | null): ReactNode {
+  const parts = partsOf(items)
+  const sum = parts.reduce((t, i) => t + i.price, 0)
+  if (!parts.length) return 'Tap items in the order you want to pick them up.'
+  const label = parts.length === 1 ? 'Part' : 'Parts'
+  if (budget == null)
+    return (
+      <>
+        {label} <strong>{money(sum)}</strong> · tap items in the order you want to pick them up.
+      </>
+    )
+  if (sum <= budget)
+    return (
+      <>
+        {label} <strong>{money(sum)}</strong>, {sum <= budget * 0.6 ? 'well inside' : 'inside'} your{' '}
+        {money(budget, true)} budget.
+      </>
+    )
+  return (
+    <>
+      {label} <strong>{money(sum)}</strong>, {money(sum - budget)} over your {money(budget, true)} budget.
+    </>
+  )
 }
 
 /**
@@ -70,15 +118,19 @@ function ItemRow({
   onToggle,
   isDisabled,
   isAlternative,
+  usual,
 }: {
   item: Item
   order: number
   onToggle: () => void
   isDisabled: boolean
   isAlternative?: boolean
+  /** The list's usual tier: no badge for it. */
+  usual: string | null
 }) {
   const picked = order > 0
-  const tier = TIER[String(item.quality_tier ?? '').toLowerCase()]
+  const tier = tierOf(item) !== usual ? TIER[tierOf(item)] : undefined
+  const spec = itemSpecLine(item)
   return (
     <button
       type="button"
@@ -89,9 +141,14 @@ function ItemRow({
       data-anchor={'i-' + item.sku}
     >
       <DepartmentTile item={item} />
-      <Text weight="semibold" as="span" className="item-row-name clamp-2">
-        {item.item_name}
+      <Text weight="semibold" as="span" className="item-row-name clamp-1">
+        {itemTitle(item)}
       </Text>
+      {spec && (
+        <Text type="supporting" as="span" className="item-row-spec clamp-1">
+          {spec}
+        </Text>
+      )}
       <Text weight="bold" hasTabularNumbers as="span" className="item-row-price">
         {money(item.price)}
       </Text>
@@ -112,14 +169,20 @@ function ItemRow({
   )
 }
 
-function ChoiceRows({ c, s }: { c: Choice; s: PhoneSession }) {
+function ChoiceRows({ c, s, usual }: { c: Choice; s: PhoneSession; usual: string | null }) {
   const order = (i: Item) => s.picked.indexOf(i.sku) + 1
   const open = s.expanded.includes(c.main.sku)
   const n = c.alternatives.length
   const altPicked = c.alternatives.some((a) => s.picked.includes(a.sku))
   return (
     <li className="choice">
-      <ItemRow item={c.main} order={order(c.main)} onToggle={() => s.togglePick(c.main.sku)} isDisabled={!!s.busy} />
+      <ItemRow
+        item={c.main}
+        order={order(c.main)}
+        onToggle={() => s.togglePick(c.main.sku)}
+        isDisabled={!!s.busy}
+        usual={usual}
+      />
       {n > 0 && (
         <VStack gap={2} className="choice-alts">
           <button
@@ -139,7 +202,7 @@ function ChoiceRows({ c, s }: { c: Choice; s: PhoneSession }) {
             </span>
           </button>
           {open && (
-            <ul className="plain-list choice-alt-list" aria-label={`Instead of ${c.main.item_name}`}>
+            <ul className="plain-list choice-alt-list" aria-label={`Instead of the ${itemTitle(c.main).toLowerCase()}`}>
               {c.alternatives.map((a) => (
                 <li key={a.sku}>
                   <ItemRow
@@ -148,6 +211,7 @@ function ChoiceRows({ c, s }: { c: Choice; s: PhoneSession }) {
                     onToggle={() => s.togglePick(a.sku)}
                     isDisabled={!!s.busy}
                     isAlternative
+                    usual={usual}
                   />
                 </li>
               ))}
@@ -176,37 +240,61 @@ export function ItemsList({ s }: { s: PhoneSession }) {
   const choices = choicesOf(items)
   const fix = choices.filter((c) => roleOf(c.main) !== 'tool')
   const tools = choices.filter((c) => roleOf(c.main) === 'tool')
+  const usual = usualTier(items)
+  // the tools fold away (most customers own a hammer); a tool already on the route keeps them open
+  const toolSkus = tools.flatMap((c) => [c.main.sku, ...c.alternatives.map((a) => a.sku)])
+  const toolsPicked = s.picked.filter((sku) => toolSkus.includes(sku)).length
+  const toolsOpen = s.expanded.includes(TOOLS_KEY)
+  const toolsSum = tools.reduce((t, c) => t + c.main.price, 0)
   return (
     <VStack gap={4}>
       <Seen s={s} />
-      <VStack gap={1} data-anchor="items-head">
+      <VStack gap={1} data-anchor="items-head" className="items-head">
         <Heading level={1}>Here's what you need</Heading>
-        {s.current?.message && (
-          <Text as="p" color="secondary">
-            {s.current.message}
-          </Text>
-        )}
+        <Text as="p" color="secondary">
+          {budgetLine(items, s.budget)}
+        </Text>
       </VStack>
       {fix.length > 0 && (
         <VStack gap={2} as="ul" className="plain-list" aria-label="For the repair">
           {fix.map((c) => (
-            <ChoiceRows key={c.main.sku} c={c} s={s} />
+            <ChoiceRows key={c.main.sku} c={c} s={s} usual={usual} />
           ))}
         </VStack>
       )}
       {tools.length > 0 && (
-        <VStack gap={2} as="section" aria-labelledby="tools-title" data-anchor="tools">
-          <HStack gap={2} vAlign="center" wrap="wrap">
-            <Text type="label" id="tools-title">
-              Tools for the job
-            </Text>
-            <Text type="supporting">skip any you already have</Text>
-          </HStack>
-          <VStack gap={2} as="ul" className="plain-list">
-            {tools.map((c) => (
-              <ChoiceRows key={c.main.sku} c={c} s={s} />
-            ))}
-          </VStack>
+        <VStack gap={2} as="section" aria-label="Tools you might need" data-anchor="tools">
+          <button
+            type="button"
+            className="tools-toggle"
+            aria-expanded={toolsOpen}
+            onClick={() => s.toggleExpanded(TOOLS_KEY)}
+          >
+            <Icon icon={WrenchScrewdriverIcon} size="sm" color="secondary" />
+            <span className="tools-toggle-text">
+              <Text type="label" as="span">
+                Tools you might need · {tools.length}
+              </Text>
+              <Text type="supporting" as="span">
+                {toolsPicked ? `${toolsPicked} on your route` : 'skip any you own'}
+              </Text>
+            </span>
+            <span className={toolsOpen ? 'alt-chevron is-open' : 'alt-chevron'} aria-hidden>
+              <Icon icon={ChevronDownIcon} size="sm" color="secondary" />
+            </span>
+          </button>
+          {toolsOpen && (
+            <>
+              <Text type="supporting" as="p" hasTabularNumbers className="tools-note">
+                {money(toolsSum)} if you bought all {tools.length}. Most people own a few already.
+              </Text>
+              <VStack gap={2} as="ul" className="plain-list">
+                {tools.map((c) => (
+                  <ChoiceRows key={c.main.sku} c={c} s={s} usual={usual} />
+                ))}
+              </VStack>
+            </>
+          )}
         </VStack>
       )}
       {s.notice && (

@@ -269,6 +269,7 @@ body {
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
     'tile name price'
+    'tile spec spec'
     'tile reason reason'
     'meta meta mark';
   column-gap: var(--spacing-3);
@@ -297,6 +298,10 @@ body {
 .item-row-name {
   grid-area: name;
   line-height: 1.3;
+}
+
+.item-row-spec {
+  grid-area: spec;
 }
 
 .item-row-price {
@@ -397,6 +402,87 @@ body {
   box-shadow: none;
   color: var(--color-on-accent);
   animation: pop var(--duration-medium) var(--ease-entrance);
+}
+
+/* "Anything else?": the collected items read as a list, left-aligned, in the centred screen */
+.center-screen .plain-list {
+  text-align: start;
+}
+
+/* the tools: folded behind one row ("Tools you might need · 4 · skip any you own") */
+.tools-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  inline-size: 100%;
+  min-block-size: var(--size-element-lg);
+  padding: var(--spacing-2) var(--spacing-3);
+  border: var(--border-width) dashed var(--color-border-emphasized);
+  border-radius: var(--radius-container);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.tools-toggle:hover {
+  background: var(--color-background-muted);
+}
+
+.tools-toggle:active {
+  background: var(--color-background-muted);
+  transform: scale(0.99);
+}
+
+.tools-toggle:focus-visible {
+  outline: var(--focus-outline-width) solid var(--color-accent);
+  outline-offset: var(--spacing-0-5);
+}
+
+.tools-toggle-text {
+  display: grid;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.tools-note {
+  margin: 0;
+  padding-inline: var(--spacing-1);
+}
+
+/* a block brought into view (a tap, the mirror, a test's click) stops below the phone's sticky header */
+.phone-main [data-anchor] {
+  scroll-margin-block: var(--spacing-12) var(--spacing-4);
+}
+
+/* the welcome screen: the visit in three steps, under the photo button */
+.welcome-steps {
+  display: grid;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: var(--spacing-4);
+  border-radius: var(--radius-container);
+  background: var(--color-background-muted);
+  list-style: none;
+}
+
+.welcome-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.welcome-step-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  inline-size: var(--spacing-8);
+  block-size: var(--spacing-8);
+  border-radius: var(--radius-full);
+  background: var(--color-background-orange);
+  color: var(--color-text-orange);
 }
 
 /* the alternatives to an item, folded under it: one choice with it */

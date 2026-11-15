@@ -16,8 +16,10 @@ import {
   CurrencyDollarIcon,
   ExclamationCircleIcon,
   EyeIcon,
+  MapPinIcon,
   MicrophoneIcon,
   PhotoIcon,
+  ShoppingBagIcon,
 } from '@heroicons/react/24/outline'
 import { StackItem } from '@astryxdesign/core/Stack'
 import { usePrefersReducedMotion, useElapsed } from '../shared/hooks'
@@ -200,7 +202,7 @@ function Welcome({ s }: { s: PhoneSession }) {
       <VStack gap={2} hAlign="center">
         <Button
           label="Take a photo of the problem"
-          variant="secondary"
+          variant="primary"
           size="lg"
           width="100%"
           icon={<Icon icon={CameraIcon} />}
@@ -216,9 +218,30 @@ function Welcome({ s }: { s: PhoneSession }) {
           onClick={() => openPhotoPicker('library')}
         />
       </VStack>
+      {!again && (
+        <ol className="welcome-steps" aria-label="How it works">
+          {WELCOME_STEPS.map(({ icon, text }, i) => (
+            <li key={text}>
+              <span className="welcome-step-icon" aria-hidden>
+                <Icon icon={icon} size="sm" color="inherit" />
+              </span>
+              <Text type="supporting" as="span">
+                <strong>{i + 1}.</strong> {text}
+              </Text>
+            </li>
+          ))}
+        </ol>
+      )}
     </VStack>
   )
 }
+
+/** The visit in three steps, under the photo button (it also fills the welcome screen's empty middle). */
+const WELCOME_STEPS = [
+  { icon: CameraIcon, text: 'Show or tell me what is broken' },
+  { icon: ShoppingBagIcon, text: 'Pick the parts I find in this store' },
+  { icon: MapPinIcon, text: 'A robot walks you to each shelf' },
+]
 
 const BUDGET_PICKS = [25, 50, 100, 200]
 

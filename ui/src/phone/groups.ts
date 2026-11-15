@@ -1,6 +1,7 @@
 // The item list as choices: each main item (or tool) with the alternatives the AI listed right
 // after it. A group is one choice: picking an alternative swaps out the main item and vice versa,
 // so the route never holds a board and its "instead of" board together.
+import { itemTitle } from '../shared/names'
 import type { Item } from '../shared/types'
 
 export const roleOf = (i: Item) => (i.role === 'tool' || i.role === 'alternative' ? i.role : 'main')
@@ -43,14 +44,4 @@ export function pickIn(items: Item[], picked: string[], sku: string): { picked: 
 }
 
 /** A short, plain name for an item ("Composite deck board") from its catalogue name. */
-export function shortName(item: Item): string {
-  const words = item.item_name
-    .replace(/\([^)]*\)/g, ' ')
-    .split(',')[0]!
-    .split(/\s+/)
-    .filter((w) => w && !/\d/.test(w) && !/^(x|in\.|ft\.|lb\.|oz\.|gal\.)$/i.test(w))
-  const brand = (item.brand ?? '').toLowerCase()
-  const rest = words.filter((w) => w.toLowerCase() !== brand)
-  const tail = rest.slice(-3).join(' ')
-  return tail ? tail.charAt(0).toUpperCase() + tail.slice(1).toLowerCase() : item.item_name
-}
+export const shortName = (item: Item): string => itemTitle(item)

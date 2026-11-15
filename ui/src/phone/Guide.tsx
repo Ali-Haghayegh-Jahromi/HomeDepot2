@@ -12,6 +12,7 @@ import { VStack } from '@astryxdesign/core/VStack'
 import { Banner } from '@astryxdesign/core/Banner'
 import { CheckIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 import { money } from '../shared/api'
+import { itemSpecLine, itemTitle } from '../shared/names'
 import { StoreMap } from '../shared/StoreMap'
 import { useStoreLayout, useTourStatus } from '../shared/useRobot'
 import { DepartmentTile } from './departments'
@@ -101,11 +102,10 @@ export function GuideScreen({ s }: { s: PhoneSession }) {
             <Heading level={1} type="display-2" color="inherit">
               Aisle {item.aisle} · Bay {item.shelf}
             </Heading>
-            {item.department && (
-              <Text color="inherit" className="hero-sub">
-                {item.department}
-              </Text>
-            )}
+            <Text color="inherit" className="hero-sub">
+              <strong>{itemTitle(item)}</strong>
+              {item.department ? ` · ${item.department}` : ''}
+            </Text>
           </VStack>
           <HStack gap={3} vAlign="center" className="hero-light" role="status">
             <ShelfTag lit={lightOn || here} />
@@ -131,10 +131,12 @@ export function GuideScreen({ s }: { s: PhoneSession }) {
           <StackItem size="fill">
             <VStack gap={1}>
               <Text type="supporting">You're picking up</Text>
-              <Text weight="semibold" maxLines={2}>
-                {item.item_name}
+              <Text weight="semibold" maxLines={1}>
+                {itemTitle(item)}
               </Text>
-              <Text type="supporting">{[item.brand, `SKU ${item.sku}`].filter(Boolean).join(' · ')}</Text>
+              <Text type="supporting" maxLines={2}>
+                {[itemSpecLine(item), `SKU ${item.sku}`].filter(Boolean).join(' · ')}
+              </Text>
             </VStack>
           </StackItem>
           <Text type="large" weight="bold" hasTabularNumbers>
@@ -152,7 +154,9 @@ export function GuideScreen({ s }: { s: PhoneSession }) {
                 <Text type="supporting" hasTabularNumbers>
                   {index + n + 1}
                 </Text>
-                <Text maxLines={1}>{i.item_name}</Text>
+                <Text maxLines={1}>
+                  {itemTitle(i)}
+                </Text>
                 <Text type="supporting">
                   Aisle {i.aisle} · Bay {i.shelf}
                 </Text>

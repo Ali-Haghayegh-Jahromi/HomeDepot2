@@ -87,4 +87,10 @@ export async function getJSON<T>(path: string, timeoutMs = 8_000): Promise<T> {
   }
 }
 
-export const money = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+/** "$18.94"; with `round`, a whole amount drops its cents ("$50", as the customer said it). */
+export const money = (n: number, round = false) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    ...(round && Number.isInteger(n) ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}),
+  }).format(n)

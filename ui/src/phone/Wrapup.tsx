@@ -13,6 +13,7 @@ import { VStack } from '@astryxdesign/core/VStack'
 import { CheckIcon, ClockIcon, PlayIcon, PlusIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline'
 import { StackItem } from '@astryxdesign/core/Stack'
 import { money } from '../shared/api'
+import { itemSpecLine, itemTitle, shortItemName } from '../shared/names'
 import type { Item, Summary } from '../shared/types'
 import type { PhoneSession } from './usePhoneSession'
 
@@ -40,7 +41,14 @@ export function AnythingElse({ s }: { s: PhoneSession }) {
               <HStack key={i.sku} as="li" gap={2} vAlign="center">
                 <Icon icon={CheckIcon} size="sm" color="success" />
                 <StackItem size="fill">
-                  <Text maxLines={1}>{i.item_name}</Text>
+                  <VStack gap={0}>
+                    <Text maxLines={1}>
+                      {itemTitle(i)}
+                    </Text>
+                    <Text type="supporting" maxLines={1}>
+                      {itemSpecLine(i)}
+                    </Text>
+                  </VStack>
                 </StackItem>
                 <Text hasTabularNumbers>{money(i.price)}</Text>
               </HStack>
@@ -66,22 +74,23 @@ export function AnythingElseFooter({ s }: { s: PhoneSession }) {
   return (
     <VStack gap={2}>
       <Button
-        label="Yes, one more thing"
+        label="No, show my repair steps"
         variant="primary"
+        size="lg"
+        width="100%"
+        icon={<Icon icon={WrenchScrewdriverIcon} />}
+        isDisabled={!!s.busy && !busy}
+        isLoading={busy}
+        onClick={() => void s.anythingElse('no')}
+      />
+      <Button
+        label="Yes, one more thing"
+        variant="secondary"
         size="lg"
         width="100%"
         icon={<Icon icon={PlusIcon} />}
         isDisabled={!!s.busy}
         onClick={() => void s.anythingElse('yes')}
-      />
-      <Button
-        label="No, I'm done for today"
-        variant="secondary"
-        size="lg"
-        width="100%"
-        isDisabled={!!s.busy && !busy}
-        isLoading={busy}
-        onClick={() => void s.anythingElse('no')}
       />
     </VStack>
   )
@@ -112,7 +121,9 @@ function RequestSummary({ r, n, many, known }: { r: Summary; n: number; many: bo
                   <HStack key={name} as="li" gap={2} vAlign="start">
                     <Icon icon={CheckIcon} size="sm" color="success" />
                     <StackItem size="fill">
-                      <Text type="supporting">{name}</Text>
+                      <Text type="supporting">
+                        {item ? itemTitle(item) : shortItemName(name)}
+                      </Text>
                     </StackItem>
                     {item && (
                       <Text type="supporting" hasTabularNumbers>
