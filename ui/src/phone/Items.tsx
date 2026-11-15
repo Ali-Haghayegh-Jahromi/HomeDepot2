@@ -24,11 +24,13 @@ import type { Item } from '../shared/types'
 import { Understood } from './Conversation'
 import type { PhoneSession } from './usePhoneSession'
 
-/** The AI tags each item with what it is for; untagged items count as the fix itself. */
+/**
+ * The AI tags each item with what it is for (main, alternative, tool) and lists them in that order:
+ * each main item followed by its alternative, tools last. Untagged items count as the fix itself.
+ */
 const GROUPS = [
-  { role: 'main', title: 'Fixes it', hint: 'What the repair itself needs' },
-  { role: 'tool', title: "Tools you'll need", hint: 'Skip any you already have at home' },
-  { role: 'alternative', title: 'Alternatives', hint: 'Instead of an item above, if you prefer' },
+  { key: 'fix', title: 'Fixes it', hint: 'What the repair itself needs' },
+  { key: 'tool', title: "Tools you'll need", hint: 'Skip any you already have at home' },
 ] as const
 const roleOf = (i: Item) => (i.role === 'tool' || i.role === 'alternative' ? i.role : 'main')
 
@@ -148,10 +150,11 @@ export function ItemsList({ s }: { s: PhoneSession }) {
       />
     )
   }
-  const groups = GROUPS.map((g) => ({ ...g, items: items.filter((i) => roleOf(i) === g.role) })).filter(
-    (g) => g.items.length > 0,
-  )
-  // Headings only when the AI tagged the items with more than one role.
+  const groups = GROUPS.map((g) => ({
+    ...g,
+    items: items.filter((i) => (roleOf(i) === 'tool') === (g.key === 'tool')),
+  })).filter((g) => g.items.length > 0)
+  // Headings only when the list has both: items for the fix and tools.
   const grouped = groups.length > 1
   return (
     <VStack gap={4}>
@@ -168,7 +171,7 @@ export function ItemsList({ s }: { s: PhoneSession }) {
         )}
       </VStack>
       {groups.map((g) => (
-        <VStack gap={3} as="section" key={g.role} aria-label={g.title}>
+        <VStack gap={3} as="section" key={g.key} aria-label={g.title}>
           {grouped && (
             <VStack gap={0}>
               <Heading level={2}>{g.title}</Heading>
@@ -177,7 +180,12 @@ export function ItemsList({ s }: { s: PhoneSession }) {
           )}
           <VStack gap={3} as="ul" className="plain-list" aria-label={grouped ? g.title : 'Suggested items'}>
             {g.items.map((i) => (
-              <li key={i.sku}>
+              <li key={i.sku} className={roleOf(i) === 'alternative' ? 'is-alternative' : undefined}>
+                {roleOf(i) === 'alternative' && (
+                  <Text type="supporting" as="p" className="alt-label">
+                    Or instead of the item above
+                  </Text>
+                )}
                 <ItemCard
                   item={i}
                   order={s.picked.indexOf(i.sku) + 1}
@@ -239,7 +247,7 @@ export function ItemsFooter({ s }: { s: PhoneSession }) {
               {s.busy?.kind === 'confirm'
                 ? 'Writing your repair steps and calling the robot…'
                 : !n
-                  ? 'Add them in the order you want to pick them up'
+                  ? 'Add what you need, in pick-up order'
                   : s.budget != null
                     ? over
                       ? `${money(total - s.budget)} over your ${money(s.budget)} budget`

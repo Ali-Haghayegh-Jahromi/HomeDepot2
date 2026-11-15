@@ -510,10 +510,8 @@ export function StoreHead({ st, docked }: { st: Stage; docked: boolean }) {
           <Text type="large" weight="bold" aria-live="polite">
             {headline(r, docked)}
           </Text>
-          <Text type="supporting" maxLines={1}>
-            {item
-              ? `${item.name} · item ${r?.index} of ${r?.total}`
-              : 'Robot service, Nav2 and the shelf lights, as they report it'}
+          <Text type="supporting" maxLines={2}>
+            {item ? `${item.name} · item ${r?.index} of ${r?.total}` : 'Nav2 and the shelf lights, as they report it'}
           </Text>
         </VStack>
       </StackItem>

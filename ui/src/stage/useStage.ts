@@ -286,7 +286,14 @@ export function useStage() {
         })
         if (id !== sessionRef.current) return
         setReach((x) => ({ ...x, n8n: 'ok' }))
-        if (!res.ok) return
+        if (!res.ok) {
+          // the visit is gone (./reset.sh between takes): back to the kiosk's start screen
+          if (res.error.error === 'unknown_session') {
+            say('kiosk', 'That visit no longer exists (the demo was reset). Ready for the next customer.')
+            resetKiosk()
+          }
+          return
+        }
         const s = res.data
         setPhone(s)
         if (s.screen === lastScreen.current) return

@@ -308,12 +308,8 @@ export function usePhoneSession() {
           // A request should get a question, a sorry or an item list back; the input screen again
           // means the service did not take it in, so say so instead of showing nothing.
           if (kind === 'request' && res.data.screen === 'input') {
-            report('unexpected_reply', { path, screen: res.data.screen }, 'warn')
-            setNotice({
-              tone: 'warning',
-              title: "We didn't catch that",
-              text: 'The store service did not answer your request. Please send it again in a moment.',
-            })
+            report('unexpected_reply', { path, screen: res.data.screen, message: res.data.message }, 'warn')
+            return 'not_taken' as const
           }
           return true
         }
@@ -344,6 +340,20 @@ export function usePhoneSession() {
 
   // ---------------------------------------------------------------- customer actions
 
+  /**
+   * The service answered a request without taking it in (the AI was busy: n8n's "please send it
+   * again"). The message stays, marked "Not sent" with a Try again that resends it as it was,
+   * photo or voice note included, so the customer never has to add them again.
+   */
+  const notTaken = useCallback((id: number) => {
+    setTalk((t) => t.map((m) => (m.id === id ? { ...m, state: 'failed' } : m)))
+    setNotice({
+      tone: 'warning',
+      title: 'The AI is busy for a moment',
+      text: 'Your message was not taken in. Tap Try again under it to send it again, photo included.',
+    })
+  }, [])
+
   const sendRequest = useCallback(
     async (draft: Draft): Promise<boolean> => {
       const text = draft.text.trim()
@@ -369,12 +379,16 @@ export function usePhoneSession() {
       retryBodies.current.set(id, body)
       const markFailed = () => setTalk((t) => t.map((m) => (m.id === id ? { ...m, state: 'failed' } : m)))
       setComposing(false)
-      const ok = await act('request', 'help/request', body, markFailed)
+      const result = await act('request', 'help/request', body, markFailed)
+      if (result === 'not_taken') {
+        notTaken(id)
+        return true // the message stays in the conversation, with one tap to send it again (photo included)
+      }
       setTalk((t) => t.map((m) => (m.id === id && m.state === 'sending' ? { ...m, state: undefined } : m)))
-      if (ok) retryBodies.current.delete(id)
-      return ok
+      if (result) retryBodies.current.delete(id)
+      return !!result
     },
-    [act, say],
+    [act, say, notTaken],
   )
 
   const retryMessage = useCallback(
@@ -382,15 +396,16 @@ export function usePhoneSession() {
       const body = retryBodies.current.get(id)
       if (!body) return
       setTalk((t) => t.map((m) => (m.id === id ? { ...m, state: 'sending' } : m)))
-      const ok = await act('request', 'help/request', body, () =>
+      const result = await act('request', 'help/request', body, () =>
         setTalk((t) => t.map((m) => (m.id === id ? { ...m, state: 'failed' } : m))),
       )
-      if (ok) {
+      if (result === 'not_taken') notTaken(id)
+      else if (result) {
         retryBodies.current.delete(id)
         setTalk((t) => t.map((m) => (m.id === id ? { ...m, state: undefined } : m)))
       }
     },
-    [act],
+    [act, notTaken],
   )
 
   const togglePick = useCallback((sku: string) => {

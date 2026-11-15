@@ -115,8 +115,8 @@ function Bubble({ m, onRetry, isBusy }: { m: Message; onRetry: (id: number) => v
             </Text>
             <Button
               label="Try again"
-              variant="ghost"
-              size="sm"
+              variant="secondary"
+              size="lg"
               icon={<Icon icon={ArrowPathIcon} />}
               isDisabled={isBusy}
               onClick={() => onRetry(m.id)}
@@ -313,7 +313,7 @@ export function Conversation({ s }: { s: PhoneSession }) {
           description={s.notice.text}
           isDismissable
           onDismiss={s.dismissNotice}
-          endContent={s.notice.retry ? <Button label="Try again" size="sm" onClick={s.notice.retry} /> : undefined}
+          endContent={s.notice.retry ? <Button label="Try again" size="lg" onClick={s.notice.retry} /> : undefined}
         />
       )}
       <span ref={end} className="scroll-end" aria-hidden />
