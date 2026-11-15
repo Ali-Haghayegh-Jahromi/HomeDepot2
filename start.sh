@@ -26,7 +26,7 @@ for arg in "$@"; do
     setup) FORCE=yes ;;
     lan|https|local) NETWORK=$arg ;;
     --no-browser) BROWSER=no ;;
-    -h|--help|help) sed -n '2,13p' "$0"; exit 0 ;;
+    -h|--help|help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
     *) die "Unknown option: $arg (try ./start.sh --help)" ;;
   esac
 done
@@ -34,6 +34,7 @@ done
 
 say "${B}Aisle Guide demo${N}"
 step "1/6  Checking Docker"
+hd_check_tools
 hd_check_docker
 good "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null) is running"
 mem=$(docker info --format '{{.MemTotal}}' 2>/dev/null)
@@ -54,8 +55,13 @@ hd_load_env
 if [ "$HTTPS" = yes ]; then good "Phones on the same Wi-Fi: on, with https (QR code: $(phone_base))"
 elif [ "$LAN" = yes ]; then good "Phones on the same Wi-Fi: on (QR code: $(phone_base))"
 else good "This computer only (for phones on the same Wi-Fi: ./start.sh lan)"; fi
+# The ports, before anything slow: every port another program uses, in one message, with the lines for .env
+# (ports this demo's own containers already hold are fine)
+hd_check_ports
+good "ports $DEMO_PORT, $N8N_PORT, $RVIZ_PORT and $HTTPS_PORT are available for the demo"
 # The AI: asked once. A key typed here goes into .env; Enter = use the key already saved in n8n
-# (from an earlier setup), else the stand-in AI.
+# (from an earlier setup), else the stand-in AI. The choice is saved at once (HD_AI=auto until n8n
+# runs), so a start that stops later (no internet, ...) does not ask again.
 if [ "$ASK_KEY" = yes ] || [ -z "$AI" ]; then
   if [ -t 0 ]; then
     ask_gemini_key
@@ -67,14 +73,16 @@ if [ "$ASK_KEY" = yes ] || [ -z "$AI" ]; then
   elif [ "$ASK_KEY" = yes ]; then
     env_set HD_AI offline   # a key in .env stays there: HD_AI=gemini in .env switches back to it
   else
-    AI_AUTO=yes   # decided once n8n runs: a saved key -> gemini, none -> offline
+    env_set HD_AI auto      # decided once n8n runs: a saved key -> gemini, none -> offline
   fi
   GEMINI_INPUT=
   hd_load_env
 fi
+[ "$AI" = auto ] && AI_AUTO=yes
 [ "$AI" = gemini ] && good "AI: Google Gemini" || { [ "$AI" = offline ] && good "AI: stand-in (offline mode)"; }
-# Claude, the optional backup AI: asked once (and again with ./start.sh claude-key). Enter = skip / keep as it is.
-if [ -t 0 ] && { [ "$ASK_CLAUDE" = yes ] || { [ "$AI" != offline ] && [ -z "$(env_get ANTHROPIC_API_KEY)" ] \
+# Claude, the optional backup AI, only with Gemini: asked once after a Gemini key was given (and again with
+# ./start.sh claude-key). Enter = skip / keep as it is. Not asked in offline mode (the stand-in needs no Claude).
+if [ -t 0 ] && { [ "$ASK_CLAUDE" = yes ] || { [ "$AI" = gemini ] && [ -z "$(env_get ANTHROPIC_API_KEY)" ] \
                                                && [ "$(env_get HD_CLAUDE_ASKED)" != yes ]; }; }; then
   ask_claude_key
   if [ -n "$CLAUDE_INPUT" ]; then env_set ANTHROPIC_API_KEY "$CLAUDE_INPUT"
@@ -110,16 +118,6 @@ fi
 
 step "4/6  Starting"
 mkdir -p "$ROOT/logs"
-if [ -z "$(dc ps -q robot 2>/dev/null)" ]; then
-  for pair in "$DEMO_PORT:HD_DEMO_PORT" "$N8N_PORT:HD_N8N_PORT" "$RVIZ_PORT:HD_RVIZ_PORT" "$HTTPS_PORT:HD_HTTPS_PORT"; do
-    port=${pair%%:*}; name=${pair#*:}
-    if port_taken_by_other "$port"; then
-      die "Port $port is already used by another program on this computer.
-  Close that program (an earlier version of this demo? stop it first), or pick another port:
-  in .env set $name=$((port + 1)), then run ./start.sh again."
-    fi
-  done
-fi
 services="postgres n8n robot"
 if [ "$AI" = offline ]; then services="$services fake-ai"; fi
 if ! COMPOSE_PROFILES=offline dc up -d --no-build --pull never $services; then
@@ -138,13 +136,24 @@ if [ "${AI_AUTO:-}" = yes ]; then
   if [ "$AI" = offline ]; then COMPOSE_PROFILES=offline dc up -d --no-build --pull never fake-ai >/dev/null 2>&1; fi
 fi
 n8n_setup || die "Setting up n8n failed. Try ./start.sh setup; details: ./tools.sh logs n8n"
+# n8n's webhooks go live a moment after it answers its health check (and after a new import): wait for a real
+# answer to the phone's status call before saying the demo runs
+if ! webhook_ok; then
+  printf '  waiting for n8n to answer the phone '
+  if wait_webhooks 60; then echo; good "n8n answers the phone"
+  else
+    echo
+    die "n8n runs, but its webhooks do not answer (the test call to /webhook/help/status failed).
+Run ./status.sh for details, or try: ./start.sh setup   (details: ./tools.sh logs n8n)"
+  fi
+fi
 
 step "6/6  Waiting for the robot (navigation needs up to a minute)"
 printf '  '
 if wait_http "http://localhost:$DEMO_PORT/health" 300 '"nav2_ready":true'; then echo; good "robot is ready"
 else echo; bad "the robot is not ready yet"; fix "It may just be slow: check with ./status.sh in a minute."; fi
 if [ "$RVIZ" = yes ]; then
-  wait_http "http://localhost:$RVIZ_PORT/vnc.html" 30 >/dev/null && good "3D view (RViz) is ready"
+  wait_http "http://localhost:$RVIZ_PORT/vnc.html" 30 >/dev/null && good "Robot view (RViz) is ready"
 fi
 
 STAGE="http://localhost:$DEMO_PORT/demo/"

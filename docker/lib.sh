@@ -25,6 +25,7 @@ say()  { printf '%s\n' "$*"; }
 step() { printf '\n%s%s%s\n' "$B" "$*" "$N"; }
 good() { printf '  %s[ OK ]%s %s\n' "$G" "$N" "$*"; }
 note() { printf '  %s[WAIT]%s %s\n' "$Y" "$N" "$*"; }
+info() { printf '  [INFO] %s\n' "$*"; }
 bad()  { printf '  %s[FAIL]%s %s\n' "$R" "$N" "$*"; }
 fix()  { printf '         %s\n' "$*"; }
 die()  { printf '\n%s%s%s\n' "$R" "$*" "$N" >&2; exit 1; }
@@ -61,12 +62,39 @@ detect_tz() {
   printf '%s\n' "${tz:-UTC}"
 }
 
+how_to_open_env() {   # how to open .env in a text editor, in plain words
+  say "  Open the settings file .env in this folder (it is hidden; this opens it anyway):"
+  if is_mac; then say "    open -e .env"
+  else say "    gedit .env        (or: nano .env, then Ctrl+O, Enter, Ctrl+X to save and close)"; fi
+}
+
 hd_make_env() {   # creates .env from the template, or adds what an older .env is missing
   if [ ! -f "$ENV_FILE" ]; then
     cp "$ROOT/docker/env.template" "$ENV_FILE"
     ENV_IS_NEW=yes
   fi
   chmod 600 "$ENV_FILE" 2>/dev/null
+  hd_load_env
+  # A .env without database passwords while this computer already has the demo's database (from another copy
+  # of the folder, or an older version): new random passwords would not match that database, and every visit
+  # would fail. Stop and say what to do instead.
+  if [ -z "$(env_get POSTGRES_PASSWORD)" ] && docker volume inspect "${PROJECT}_hd_pgdata" >/dev/null 2>&1; then
+    [ "${ENV_IS_NEW:-}" = yes ] && rm -f "$ENV_FILE"
+    if is_mac; then hidden="in Finder press Command+Shift+. (dot) to show hidden files"
+    else hidden="in the Files app press Ctrl+H to show hidden files"; fi
+    die "This computer already has the demo's data from another copy of the demo folder
+(an older version, or the same demo downloaded twice). This folder has no settings
+file for that data yet, so the demo would not be able to open its own database.
+
+Do one of these:
+  1. Keep the old data (the n8n login, the API key, earlier visits): copy the file .env
+     from the folder you started the demo from before into this folder, then run
+     ./start.sh again. .env is a hidden file: $hidden.
+     Or in a terminal:   cp /path/to/the/old/folder/.env .
+  2. Start over from scratch (deletes the old data: visits, the n8n login, saved keys):
+       ./reset.sh --everything
+     then run ./start.sh again."
+  fi
   # the keys an older .env (from before this setup) does not have
   for key in HD_LAN HD_HTTPS HD_PUBLIC_HOST HD_RVIZ HD_RVIZ_VIEW HD_DEMO_PORT HD_N8N_PORT HD_RVIZ_PORT HD_HTTPS_PORT N8N_OWNER_EMAIL N8N_OWNER_PASSWORD; do
     grep -q "^$key=" "$ENV_FILE" || NEED_UPGRADE=yes
@@ -145,9 +173,11 @@ hd_check_docker() {
   2. Open Docker from Applications once and accept its terms.
   3. Start the demo again."
     fi
-    die "Docker is not installed.
-  Install Docker Engine: https://docs.docker.com/engine/install/ubuntu/
-  then:  sudo usermod -aG docker \$USER   and log out and back in. Then start the demo again."
+    die "Docker is not installed. Install it with these commands (they ask for your password):
+  curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh
+  sudo usermod -aG docker \$USER
+then log out and back in (or restart the computer), and start the demo again.
+(More: QUICKSTART.md, section 1.)"
   fi
   if ! docker info >/dev/null 2>&1; then
     if is_mac; then
@@ -176,12 +206,70 @@ and start the demo again."
     fi
   fi
   docker compose version >/dev/null 2>&1 || die "Docker Compose is missing.
-  Ubuntu: sudo apt-get install docker-compose-plugin        Mac: update Docker Desktop."
+  Ubuntu: sudo apt install docker-compose-plugin        Mac: update Docker Desktop."
+}
+
+hd_check_tools() {   # the few programs the scripts need besides Docker (a Mac has them all)
+  missing=
+  for tool in curl awk sed grep cksum; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+  done
+  [ -z "$missing" ] && return 0
+  if is_mac; then
+    die "This computer is missing a program the demo needs:$missing
+  Install Apple's command line tools (run: xcode-select --install), then start the demo again."
+  fi
+  die "This computer is missing a program the demo needs:$missing
+  Install it (it asks for your password):
+    sudo apt install$missing
+  then start the demo again."
 }
 
 port_taken_by_other() {   # true if something that is not this demo listens on the port
+  # ports published by this demo's own containers are fine (they are the demo)
+  if docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Ports}}' 2>/dev/null \
+       | tr ',' '\n' | grep -q ":$1->"; then
+    return 1
+  fi
   curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$1/" 2>/dev/null
-  [ $? -ne 7 ]
+  case $? in
+    7) return 1 ;;      # nothing listens there: free
+    127) return 1 ;;    # no curl (hd_check_tools says so first): cannot tell, so do not claim it is busy
+    *) return 0 ;;
+  esac
+}
+
+hd_check_ports() {   # lists every port of the demo that another program uses, with the lines for .env; stops then
+  busy=; lines=; taken=" $DEMO_PORT $N8N_PORT $RVIZ_PORT $HTTPS_PORT "
+  for spec in "$DEMO_PORT:HD_DEMO_PORT:the demo pages" "$N8N_PORT:HD_N8N_PORT:n8n" \
+              "$RVIZ_PORT:HD_RVIZ_PORT:the robot view (RViz)" "$HTTPS_PORT:HD_HTTPS_PORT:https for phones"; do
+    port=${spec%%:*}; rest=${spec#*:}; name=${rest%%:*}; what=${rest#*:}
+    port_taken_by_other "$port" || continue
+    # suggest the next port that is free and not used by another part of the demo
+    new=$((port + 1))
+    while [ $new -lt $((port + 100)) ]; do
+      case "$taken" in *" $new "*) ;; *) port_taken_by_other "$new" || break ;; esac
+      new=$((new + 1))
+    done
+    taken="$taken$new "
+    busy="$busy
+    $port  ($what)"
+    lines="$lines
+    $name=$new"
+  done
+  [ -z "$busy" ] && return 0
+  say ""
+  say "${R}These ports are already used by another program on this computer:${N}$busy"
+  say ""
+  say "Either close that program (an older copy of this demo? stop it in its own folder with ./stop.sh),"
+  say "or let the demo use other ports:"
+  how_to_open_env
+  say "  and change these lines (or add them at the end of the file):$lines"
+  say "  Save the file, then run ./start.sh again."
+  case "$lines" in *HD_DEMO_PORT=*)
+    say "  (The demo's address then changes too: ./start.sh prints it when it is ready.)" ;;
+  esac
+  exit 1
 }
 
 source_fingerprint() {   # changes whenever a file that goes into the robot image changes
@@ -325,6 +413,7 @@ ask_claude_key() {   # asks for the optional Anthropic key (hidden); sets CLAUDE
   say "API key (paid per use; a demo costs cents):"
   say "  1. Open https://console.anthropic.com/settings/keys, sign in, press 'Create Key' and copy it."
   say "  2. Paste it below and press Enter (you will not see it while you paste)."
+  say "This is optional and only used together with Gemini (never with the stand-in AI)."
   say "Or just press Enter to skip (Gemini only). Add it any time later with ./start.sh claude-key"
   tries=0
   while [ $tries -lt 3 ]; do
@@ -469,6 +558,26 @@ open_browser() {
   fi
 }
 
+webhook_ok() {   # true if n8n's webhooks answer: the phone's status poll, for a visit that does not exist
+  # (it creates nothing; n8n's status workflow answers 404 "unknown_session", which needs its database login too)
+  curl -s --max-time 5 "http://localhost:$N8N_PORT/webhook/help/status?session_id=none" 2>/dev/null | grep -q unknown_session
+}
+
+wait_webhooks() {   # wait_webhooks SECONDS: until n8n's webhooks answer (they go live a moment after /healthz)
+  i=0
+  while [ $i -lt "$1" ]; do
+    webhook_ok && return 0
+    i=$((i + 2)); printf '.'; sleep 2
+  done
+  return 1
+}
+
+db_login_ok() {   # db_login_ok USER PASSWORD: true if the database accepts this login over the network, like n8n's
+  # (inside the postgres container a local login needs no password, so this logs in by the service name)
+  printf '%s\n' "$2" | dc exec -T postgres sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD
+    psql -h postgres -U "$1" -d "$POSTGRES_DB" -tAc "SELECT 1" >/dev/null 2>&1' sh "$1" >/dev/null 2>&1
+}
+
 # ------------------------------------------------------------------ status
 hd_status() {   # plain-language health of each part, with the fix; returns 1 if something is wrong
   problems=0
@@ -484,7 +593,17 @@ hd_status() {   # plain-language health of each part, with the fix; returns 1 if
   state_of() { printf '%s\n' "$running" | awk -v s="$1" '$1 == s {print $2 " " $3}'; }
 
   case "$(state_of postgres)" in
-    "running healthy") good "Database (PostgreSQL)" ;;
+    "running healthy")
+      if db_login_ok "$(env_get POSTGRES_USER)" "$(env_get POSTGRES_PASSWORD)" \
+         && db_login_ok hd_llm_reader "$(env_get HD_LLM_READER_PASSWORD)"; then
+        good "Database (PostgreSQL): the passwords in .env work"
+      else
+        bad "The database does not accept the passwords in .env"
+        fix "This folder's .env does not belong to the demo data on this computer (a second copy of the"
+        fix "demo folder?). Copy .env from the folder you first started the demo from into this one, then"
+        fix "./start.sh. Or start over from scratch (deletes the old data): ./reset.sh --everything"
+        problems=1
+      fi ;;
     running*) note "Database is starting"; fix "Wait a few seconds and check again: ./status.sh" ;;
     *) bad "Database is not running"; fix "Fix: ./start.sh"; problems=1 ;;
   esac
@@ -495,21 +614,32 @@ hd_status() {   # plain-language health of each part, with the fix; returns 1 if
     if printf '%s' "$wf" | grep -q hdGuideRobot00001 && printf '%s' "$wf" | grep -q hdPhoneStatus001 \
        && printf '%s' "$wf" | grep -q hdIdleCheck00001; then
       good "Workflow 'Home Depot guide robot' (+ status poll and timeout check) is switched on"
+      if webhook_ok; then good "n8n answers the phone (a test call to its webhook worked)"
+      else
+        bad "n8n does not answer the phone's calls (a test call to the webhook /help/status failed)"
+        fix "If n8n has just started, wait half a minute and check again. Otherwise: ./start.sh setup"
+        fix "(details: ./tools.sh logs n8n)"
+        problems=1
+      fi
     else bad "The workflows are not switched on"; fix "Fix: ./start.sh setup"; problems=1; fi
     if [ "$AI" = offline ]; then
       if [ "$(state_of fake-ai)" = "running " ]; then good "AI: stand-in (offline mode)"
       else bad "The stand-in AI is not running"; fix "Fix: ./start.sh"; problems=1; fi
+    elif [ "$AI" = auto ] || [ -z "$AI" ]; then
+      bad "The AI is not set up yet (the last ./start.sh stopped before it)"; fix "Fix: ./start.sh"; problems=1
     else
       case "$(gemini_key_state)" in
         real) good "AI: Google Gemini (an API key is saved)" ;;
         *) bad "AI: no Gemini API key is saved, so the AI steps will fail"; fix "Fix: ./start.sh key"; problems=1 ;;
       esac
     fi
-    case "$(claude_key_state)" in
-      real) good "Backup AI: Claude (an Anthropic key is saved)$( [ "$(env_get HD_AI_PROVIDER)" = claude ] && echo '; Claude goes first (HD_AI_PROVIDER=claude)')" ;;
-      *) note "Backup AI: no Claude key (optional): when every Gemini model is out of quota, customers are asked to try again"
-         fix "Add one any time: ./start.sh claude-key" ;;
-    esac
+    if [ "$AI" != offline ]; then
+      case "$(claude_key_state)" in
+        real) good "Backup AI: Claude (an Anthropic key is saved)$( [ "$(env_get HD_AI_PROVIDER)" = claude ] && echo '; Claude goes first (HD_AI_PROVIDER=claude)')" ;;
+        *) info "Backup AI Claude: not set up (optional). When every Gemini model is out of quota, customers"
+           fix "are asked to try again. To add one: ./start.sh claude-key" ;;
+      esac
+    fi
     ai_models_status
   elif [ -n "$(state_of n8n)" ]; then
     note "n8n is starting"; fix "Wait half a minute and check again: ./status.sh"
@@ -531,11 +661,11 @@ hd_status() {   # plain-language health of each part, with the fix; returns 1 if
   fi
 
   if [ "$RVIZ" = yes ]; then
-    if curl -sf -o /dev/null --max-time 3 "http://localhost:$RVIZ_PORT/vnc.html"; then good "3D view (RViz): http://localhost:$RVIZ_PORT"
-    elif [ -n "$(state_of robot)" ]; then note "3D view (RViz) is starting"
+    if curl -sf -o /dev/null --max-time 3 "http://localhost:$RVIZ_PORT/vnc.html"; then good "Robot view (RViz): http://localhost:$RVIZ_PORT"
+    elif [ -n "$(state_of robot)" ]; then note "Robot view (RViz) is starting"
     fi
   else
-    good "3D view (RViz) is switched off (HD_RVIZ=no in .env)"
+    good "Robot view (RViz) is switched off (HD_RVIZ=no in .env)"
   fi
   if [ "$LAN" = yes ]; then
     if curl -sf -o /dev/null --max-time 3 "http://$HD_PUBLIC_ADDR:$DEMO_PORT/health"; then

@@ -108,6 +108,7 @@ services:
     pull_policy: never                      # built for the robot service above
     container_name: ${HD_NAME_PREFIX:-hd}_fake_ai
     restart: unless-stopped
+    init: true                              # stops at once on ./stop.sh (Python as PID 1 ignores SIGTERM)
     entrypoint: ["python3", "/opt/hd/fake_ai.py"]
 
 volumes:

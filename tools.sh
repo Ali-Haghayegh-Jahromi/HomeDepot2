@@ -28,5 +28,5 @@ case "$cmd" in
   shell)
     dc exec $TTY robot bash -c 'source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=42 ROS_LOCALHOST_ONLY=1; exec bash' ;;
   *)
-    sed -n '2,10p' "$0" ;;
+    awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0" ;;
 esac
