@@ -377,9 +377,13 @@ class RosDriver:
             # a label outside the 5 m ring: a short item name, and "A1 · B5" (aisle, bay) in orange,
             # on a white plate with an orange rim. Separate text markers: RViz draws spaces very wide.
             name = str(target.get('short_name') or short_name(target.get('name') or target.get('sku')))[:18]
-            h = 0.95
-            width = max(len(name) * h * 0.56, 4.6) + 1.4
-            plate_h = 2 * h + 1.3
+            # big enough for the studio view, where RViz is drawn at about half size (>= 14 px letters)
+            h = 1.3
+            words = name.split()
+            char_w, space_w = h * 0.5, h * 0.3       # rough glyph widths of RViz's font, in metres
+            name_w = sum(len(w) for w in words) * char_w + space_w * (len(words) - 1)
+            width = max(name_w, 4.6) + 1.6
+            plate_h = 2 * h + 1.4
             # toward the middle of the store (the cross aisle and beyond), clear of the ring
             off = NEAR_M + 1.0 + plate_h / 2
             py = ty + off if ty < layout.DEPTH / 2 - 2 else ty - off
@@ -387,11 +391,16 @@ class RosDriver:
             px = min(max(tx, width / 2 + 0.8), layout.WIDTH - width / 2 - 0.8)
             add(Marker.CUBE, px, py, 5.00, (width + 0.36, plate_h + 0.36, 0.04), (*accent, 1.0), ns='target_label')
             add(Marker.CUBE, px, py, 5.04, (width, plate_h, 0.04), (*paper, 1.0), ns='target_label')
-            add(Marker.TEXT_VIEW_FACING, px, py + 0.62, 5.15, (0.0, 0.0, h), (*ink, 1.0), name, ns='target_label')
-            add(Marker.TEXT_VIEW_FACING, px - 1.25, py - 0.62, 5.15, (0.0, 0.0, h), (*accent, 1.0),
+            # one text marker per word, placed side by side: RViz draws a space very wide ("Deck   board")
+            x = px - name_w / 2
+            for w in words:
+                ww = len(w) * char_w
+                add(Marker.TEXT_VIEW_FACING, x + ww / 2, py + 0.8, 5.15, (0.0, 0.0, h), (*ink, 1.0), w, ns='target_label')
+                x += ww + space_w
+            add(Marker.TEXT_VIEW_FACING, px - 1.15, py - 0.8, 5.15, (0.0, 0.0, h), (*accent, 1.0),
                 f"A{target.get('aisle')}", ns='target_label')
-            add(Marker.CYLINDER, px, py - 0.62, 5.12, (0.24, 0.24, 0.02), (*accent, 1.0), ns='target_label')
-            add(Marker.TEXT_VIEW_FACING, px + 1.25, py - 0.62, 5.15, (0.0, 0.0, h), (*accent, 1.0),
+            add(Marker.CYLINDER, px, py - 0.8, 5.12, (0.3, 0.3, 0.02), (*accent, 1.0), ns='target_label')
+            add(Marker.TEXT_VIEW_FACING, px + 1.15, py - 0.8, 5.15, (0.0, 0.0, h), (*accent, 1.0),
                 f"B{target.get('shelf')}", ns='target_label')
 
         for code, light in self._lights.items():

@@ -223,9 +223,10 @@ class SimRobot(Node):
         # The robot, big enough to find in a top view of the whole store: a green disc with a white
         # halo and a white heading arrow, drawn above everything else (signs at 4.9 m, labels at
         # 5.15 m), all locked to the robot's own frame, so RViz moves them with TF.
-        for kind, z, sx, sy, sz, rgb, x in ((Marker.CYLINDER, 5.40, 3.1, 3.1, 0.02, PAPER, 0.0),
-                                            (Marker.CYLINDER, 5.42, 2.5, 2.5, 0.02, SUCCESS, 0.0),
-                                            (Marker.ARROW, 5.46, 1.4, 0.5, 0.9, PAPER, -0.55)):
+        # 3.6 m across: about 50 px in the studio view, where RViz is drawn at about half size
+        for kind, z, sx, sy, sz, rgb, x in ((Marker.CYLINDER, 5.40, 3.6, 3.6, 0.02, PAPER, 0.0),
+                                            (Marker.CYLINDER, 5.42, 2.95, 2.95, 0.02, SUCCESS, 0.0),
+                                            (Marker.ARROW, 5.46, 1.7, 0.6, 1.05, PAPER, -0.65)):
             m = Marker()
             m.header.frame_id = 'base_footprint'        # stamp 0: always the newest pose
             m.ns, m.id, m.type, m.action = 'robot_footprint', len(markers), kind, Marker.ADD
@@ -249,7 +250,7 @@ class SimRobot(Node):
             add(Marker.CYLINDER, 'aisle_sign', x, y, 4.60, 2.25, 2.25, 0.05, INK)          # dark rim
             add(Marker.CYLINDER, 'aisle_sign', x, y, 4.65, 1.95, 1.95, 0.05, PAPER)
             add(Marker.TEXT_VIEW_FACING, 'aisle_number', x, y, 4.9, 0, 0, 1.35, INK, 1.0, str(a))
-            add(Marker.TEXT_VIEW_FACING, 'aisle_name', x, L.FRONT_Y0 - 3.4, 4.9, 0, 0, 0.72, INK, 1.0, SHORT_NAMES[a])
+            add(Marker.TEXT_VIEW_FACING, 'aisle_name', x, L.FRONT_Y0 - 3.55, 4.9, 0, 0, 0.78, INK, 1.0, SHORT_NAMES[a])
         for x0, y0, x1, y1, label in L.FRONT_OBSTACLES:
             if label == 'kiosk':
                 box('kiosk', x0, y0, x1, y1, 0.0, 1.1, ACCENT)
@@ -266,7 +267,8 @@ class SimRobot(Node):
         # the dock: a green pad with a dark ring; its label below it
         add(Marker.CYLINDER, 'dock', L.DOCK[0], L.DOCK[1], 0.01, 2.3, 2.3, 0.02, SUCCESS)
         add(Marker.CYLINDER, 'dock', L.DOCK[0], L.DOCK[1], 0.02, 2.0, 2.0, 0.02, SUCCESS_MUTED)
-        add(Marker.TEXT_VIEW_FACING, 'label', L.DOCK[0] + 2.4, L.DOCK[1], 4.9, 0, 0, 0.62, SUCCESS, 1.0, 'ROBOT\nDOCK')
+        # above the pad (the robot's 3.6 m disc covers the pad and its sides when it is docked)
+        add(Marker.TEXT_VIEW_FACING, 'label', L.DOCK[0], L.DOCK[1] + 2.75, 4.9, 0, 0, 0.55, SUCCESS, 1.0, 'ROBOT\nDOCK')
         add(Marker.TEXT_VIEW_FACING, 'label', sum(L.ENTRANCE) / 2, 0.75, 4.9, 0, 0, 0.62, INK, 1.0, 'ENTRANCE')
 
 
