@@ -26,15 +26,17 @@ Every phone webhook answers with the same shape, which tells the phone page what
 |---|---|---|
 | `input` | text box, photo upload, voice recorder | `{}` |
 | `sorry` | the sorry message, then the input page again | `{}`, or `{question, options}` when a follow-up question is still waiting for an answer |
-| `question` | a follow-up question + the same input options | `{question: string, options: string[]}` (`options` may be empty; they are tap-to-answer suggestions; the question is plain text, no markdown, no choices inside it) |
-| `items` | the suggested items, to tick and order | `{items: Item[]}` (at most 8; the fix first, other materials next, tools last) |
+| `question` | a follow-up question + the same input options | `{question: string, options: string[], understood: string}` (`options` may be empty; they are tap-to-answer suggestions; the question is plain text, no markdown, no choices inside it) |
+| `items` | the suggested items, to tick and order | `{items: Item[], understood: string}` (at most 8; `main` items first, each `alternative` right after the item it can replace, `tool`s last) |
 | `guiding` | "Follow the robot" + the item it is heading to | `{item: Item, index: int, total: int, light_on: bool}` |
 | `arrived` | the same item + the **I am done** button | same as `guiding`, plus `robot_reached: bool` (false: the robot could not get all the way to the shelf; `message` then says where the item is) |
 | `anything_else` | "Is there anything else I can help you with?" Yes / No | `{}` |
 | `finished` | repair steps and videos for every request; visit over | `{requests: Summary[]}` |
 | `timed_out` | "Session ended" + the same steps and videos, if any (after 10 minutes without input, or when a new customer pressed the kiosk button) | `{requests: Summary[]}` |
 
-**"Please send it again"** (any `/help/request`): when the AI did not answer in time or gave an unusable answer, nothing changes for the visit. The reply is the screen the phone is already on, with the same `data` plus `retry: true`, and `message` is the retry text ("Sorry, I couldn't process that just now. Please send it again."). On a `question` screen the question and its options stay; the phone should show `message` as a note and let the customer send the same answer again. A `/help/request` is answered within about 25 seconds, this way if need be.
+**`understood`** (on every `question` and `items` reply that came from the AI, also when n8n asks the budget): one short plain sentence, no question, saying what the AI understood of the job so far, for the phone's "Here's what I see". After a photo it starts with "I can see", for example `"I can see a cracked pressure-treated deck board with rusty nails."`; later in the same request it keeps what the photo showed (`"A cracked deck board, about $80 to fix it."`). It is `""` when the AI gave nothing usable for it. A retry reply (below) keeps the `understood` of the screen it repeats.
+
+**"Please send it again"** (any `/help/request`): when the AI did not answer in time or gave an unusable answer, nothing changes for the visit. The reply is the screen the phone is already on, with the same `data` plus `retry: true`, and `message` is the retry text ("Sorry, I couldn't process that just now. Please send it again."). On a `question` screen the question and its options stay; the phone should show `message` as a note and let the customer send the same answer again. A `/help/request` is answered within about 25 seconds, this way if need be. Before giving up, n8n tries every AI model of its chain that time allows (several free Gemini models, then Claude if a key is set). When the message was only a voice recording and no Gemini model could answer (Claude cannot listen), the retry reply's `message` is instead "Sorry, I can't listen to voice notes right now. Please type your message instead (you can add a photo too)." (same `retry: true`, same screen).
 
 **Not relevant on the item list**: an unrelated message sent while the phone shows `items` gets the sorry text as `message`, but the screen stays `items` with the same list (so the customer can still choose).
 
@@ -52,11 +54,20 @@ Every phone webhook answers with the same shape, which tells the phone page what
   "department": "Fasteners",
   "aisle": 3,
   "shelf": 4,
+  "role": "main",
   "reason": "Holds the new deck board to the joists; fits your budget."
 }
 ```
 
-`reason` (string) is the AI's one-line "why this item"; it is only present in the `items` screen (not in `guiding` / `arrived`).
+`reason` (string) is the AI's one-line "why this item"; `role` (string) is what the item is for in the job:
+
+| `role` | Meaning |
+|---|---|
+| `main` | a first-choice item that fixes the problem, including the other materials the job needs (one per need) |
+| `alternative` | another option (cheaper or better) for the `main` item just before it in the list |
+| `tool` | a tool the job needs (always a Tools department item of the catalogue) |
+
+The budget counts the `main` items and the `tool`s, not the alternatives. If those come to more than the budget, n8n leaves out the most expensive tools until they fit (the `main` items always stay) and the `message` says which ones, for example "... To stay within your $80 budget I left out: Ryobi 13 Amp Corded 7-1/4 in. Circular Saw." Both `reason` and `role` are only present in the `items` screen (not in `guiding` / `arrived`).
 
 `Summary`:
 
@@ -127,8 +138,22 @@ Output: a screen reply with `screen` = `sorry`, `question` or `items`.
 {
   "session_id": "k7m2x9qa4h",
   "screen": "question",
-  "message": "Is the deck made of wood or composite, and roughly what is your budget for this repair?",
-  "data": {"question": "Is the deck made of wood or composite, and roughly what is your budget for this repair?", "options": ["Wood", "Composite", "Not sure"]}
+  "message": "Is the deck made of wood or composite?",
+  "data": {"question": "Is the deck made of wood or composite?", "options": ["Wood", "Composite", "Not sure"],
+           "understood": "You want to replace a cracked deck board."}
+}
+```
+
+With a photo (`image_base64`) and no text, the AI works from the photo: it says what it sees and asks only what the photo cannot show. The budget is asked by n8n (the `budget_question` of the Config node), with the AI's `understood`:
+
+```json
+{
+  "session_id": "k7m2x9qa4h",
+  "screen": "question",
+  "message": "Before I pick the items: roughly how much would you like to spend on this job in total?",
+  "data": {"question": "Before I pick the items: roughly how much would you like to spend on this job in total?",
+           "options": ["About $25", "About $50", "About $100", "No fixed budget"],
+           "understood": "I can see a cracked pressure-treated deck board with rusty nails."}
 }
 ```
 

@@ -7,9 +7,9 @@ Everything runs on one computer (Ubuntu, or a Mac with Apple Silicon or Intel) i
 ```
  kiosk + phone (demo pages)          n8n workflow                     robot side (container hd_robot)
  ──────────────────────────          ────────────                     ─────────────────────────────
- http://localhost:8000/demo/  ──►  webhooks /help/...   ──► AI 1 relevancy (Gemini)
-                                   sessions + history   ──► AI 2 understand + items (Gemini)
-                                   in PostgreSQL        ──► AI 3 repair steps (Gemini)
+ http://localhost:8000/demo/  ──►  webhooks /help/...   ──► AI 1 relevancy        (Gemini models,
+                                   sessions + history   ──► AI 2 understand + items  then Claude
+                                   in PostgreSQL        ──► AI 3 repair steps         as the fallback)
                                    POST /tour/start ...  ─────────────►  robot service (FastAPI + rclpy)
                                    POST /robot/event    ◄─────────────   └► Nav2 (AMCL, planner, controller)
                                                                              └► simulated robot in the store
@@ -36,10 +36,12 @@ Everything runs on one computer (Ubuntu, or a Mac with Apple Silicon or Intel) i
 | [n8n/homedepot_guide_robot.json](n8n/homedepot_guide_robot.json) | **the workflow to import into n8n** |
 | [n8n/setup.sh](n8n/setup.sh) | rebuilds the workflow, imports it + the credentials into n8n and switches it on (`./start.sh setup`) |
 | [n8n/build_workflow.py](n8n/build_workflow.py) | the workflow in readable form (regenerates the JSON) |
-| [n8n/test/](n8n/test/) | a stand-in for Gemini (no API key needed) and the workflow variant that uses it |
+| [n8n/test/](n8n/test/) | a stand-in for Gemini and Claude (no API key needed) and the workflow variant that uses it |
 | [ui/](ui/) | **the front end** (React 19 + Astryx): demo stage (kiosk, phone frame, live store map) and the phone page; see [The front end](#the-front-end) |
 | [demo/](demo/) | the previous plain-HTML version of the same screens (served until the switch to `ui/dist/`) |
 | [tools/full_flow_test.py](tools/full_flow_test.py) | plays a whole customer visit and checks every step |
+| [tools/edge_case_test.py](tools/edge_case_test.py) | the awkward cases (double taps, timeouts, AI failures, the model chain, photos), against the stand-in AI |
+| [tools/photo_test.py](tools/photo_test.py), [tools/make_test_photos.py](tools/make_test_photos.py) | sends a photo or voice note like the phone does and prints what the AI understood and picked; draws five test photos |
 | [tools/log_check.py](tools/log_check.py) | merges all logs into one time line per visit and checks them for bugs (see [Logs and finding bugs](#logs-and-finding-bugs)) |
 | [API_CONTRACT.md](API_CONTRACT.md) | every webhook and endpoint: fields, types, examples |
 | [WORKFLOW_EXPLAINED.md](WORKFLOW_EXPLAINED.md) | the workflow, node by node, in plain language |
@@ -48,7 +50,7 @@ Everything runs on one computer (Ubuntu, or a Mac with Apple Silicon or Intel) i
 
 - **n8n**: the tool that runs the workflow. A workflow is a chain of *nodes* (steps).
 - **Webhook**: an address that starts the workflow when something calls it. The kiosk, the phone and the robot each call webhooks.
-- **Credential**: a saved password or API key inside n8n, so nodes can log in to the database or to Gemini.
+- **Credential**: a saved password or API key inside n8n, so nodes can log in to the database, to Gemini or to Claude.
 - **Docker / container**: a way to run a program in its own box without installing it on the PC.
 - **Nav2**: the navigation software of ROS 2 (the robot framework). It plans the route and drives.
 - **RViz**: the 3D viewer of ROS 2.
@@ -65,10 +67,10 @@ The only thing to install is Docker: **Docker Engine** (with the Compose plugin)
 (Mac: or double-click `Start Demo.command`.) The first run, step by step:
 
 1. **Checks Docker** (installed, running, usable by this user; on a Mac it starts Docker Desktop if it is closed) and says what to do if not.
-2. **Creates `.env`** from [docker/env.template](docker/env.template) with generated database passwords and an n8n login, and **asks once for the Gemini API key** (hidden input; get one at https://aistudio.google.com/apikey). The key is checked with Google and stored in `.env` only. Press Enter to skip: the demo then runs in **offline mode** with the stand-in AI (see below).
+2. **Creates `.env`** from [docker/env.template](docker/env.template) with generated database passwords and an n8n login, and **asks once for the Gemini API key** (hidden input; get one at https://aistudio.google.com/apikey). The key is checked with Google and stored in `.env` only. Press Enter to skip: the demo then runs in **offline mode** with the stand-in AI (see below). Then it **asks once for an optional Anthropic key** (Claude, the backup AI: see [The AI: Gemini models, then Claude](#the-ai-gemini-models-then-claude)); Enter skips it.
 3. **Downloads** PostgreSQL 16 and n8n (pinned versions) and **builds the robot image** (`hd-demo-robot`, about 4 minutes on a fast connection): official multi-arch `ros:humble-ros-base` + Nav2 + RViz + Xvfb/x11vnc/noVNC, the robot service, and the front end (`ui/` is built with Node 22 inside the build; without `ui/package.json` the plain `demo/` pages are used).
 4. **Starts** the Compose project `homedepot` ([docker/compose.yaml](docker/compose.yaml)). The database fills itself on the first start (100 items).
-5. **Sets up n8n**: creates the owner account (`demo@aisleguide.local` + the generated password from `.env`), builds the workflow from [n8n/build_workflow.py](n8n/build_workflow.py) inside the robot image (robot at `http://robot:8000`, the phone link, Gemini or the stand-in), imports the three credentials below and the workflow, and switches it on.
+5. **Sets up n8n**: creates the owner account (`demo@aisleguide.local` + the generated password from `.env`), builds the workflow from [n8n/build_workflow.py](n8n/build_workflow.py) inside the robot image (robot at `http://robot:8000`, the phone link, Gemini or the stand-in), imports the credentials below and the workflow, and switches it on. It also creates the table `ai_model_status` (the model chain's memory) if the database is older than it.
 6. **Waits** until Nav2 is ready, prints the addresses and the n8n login, and opens the demo stage in the browser.
 
 Later starts take about a minute: images are rebuilt only when a file that goes into them changed, and n8n is set up again only when the workflow source or a setting changed.
@@ -81,9 +83,10 @@ Later starts take about a minute: images are rebuilt only when a file that goes 
 |---|---|---|
 | **HD Postgres (workflow tables)** (Postgres) | host `postgres` (the Compose service), port `5432`, database `homedepot`, user `hd_app`, password `POSTGRES_PASSWORD` from `.env`, SSL disable | Save new session, Load session, Look up chosen items, Find idle visits, Save state, Write the log |
 | **HD Postgres (AI read-only: store_items)** (Postgres) | same host/port/database, user `hd_llm_reader`, password `HD_LLM_READER_PASSWORD` from `.env` | Read item catalogue |
-| **HD Google Gemini API key** (Google Gemini(PaLM) Api) | host `https://generativelanguage.googleapis.com`, `GEMINI_API_KEY` from `.env` | AI 1: relevancy check, AI 2: understand the need, AI 3: repair steps and videos |
+| **HD Google Gemini API key** (Google Gemini(PaLM) Api) | host `https://generativelanguage.googleapis.com`, `GEMINI_API_KEY` from `.env` | AI 1: relevancy check (Gemini), AI 2: understand the need (Gemini), Gemini: first model, Gemini: second model |
+| **HD Anthropic API key (optional)** (Anthropic) | `ANTHROPIC_API_KEY` from `.env` (empty if none), base URL `https://api.anthropic.com` | AI 1: relevancy check (Claude), AI 2: understand the need (Claude), Claude: main model |
 
-If `GEMINI_API_KEY` in `.env` is empty, a key already saved in n8n is kept (a key pasted in the n8n website keeps working). After an import by hand, switch the workflow on with the **Publish** button (top right of the workflow).
+In offline mode the Gemini and Claude nodes use **HD Gemini stand-in (no key)** and **HD Claude stand-in (no key)** instead (address `http://fake-ai:8010`, dummy keys), so a real key never goes to the stand-in. If `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` in `.env` is empty, a key already saved in n8n is kept (a key pasted in the n8n website keeps working; after pasting a Claude key there, run `./start.sh setup` so the workflow knows one is set). After an import by hand, switch the workflow on with the **Publish** button (top right of the workflow).
 
 ### Settings (.env)
 
@@ -91,6 +94,10 @@ If `GEMINI_API_KEY` in `.env` is empty, a key already saved in n8n is kept (a ke
 |---|---|---|
 | `HD_AI` | asked on the first start | `gemini` or `offline` (stand-in AI). Change with `./start.sh key` |
 | `GEMINI_API_KEY` | asked | the Gemini key (never printed by the scripts) |
+| `ANTHROPIC_API_KEY` | asked once (optional) | the Claude key for the backup AI (never printed). Add or change it with `./start.sh claude-key` |
+| `HD_CLAUDE_ASKED` | | `yes` once `./start.sh` has asked for the Claude key (so it asks only once) |
+| `HD_AI_PROVIDER` | `gemini` | `claude`: Claude answers first and the Gemini models are the backup (needs a Claude key) |
+| `HD_GEMINI_MODELS` | the workflow's list | the Gemini models to try, in order, comma-separated |
 | `N8N_OWNER_EMAIL`, `N8N_OWNER_PASSWORD` | `demo@aisleguide.local`, generated | the n8n login created on the first start |
 | `HD_LAN` | `no` | `yes`: the demo port listens on the network and the QR code uses this computer's address, so real phones on the same Wi-Fi can open it (`./start.sh lan`; `./start.sh local` switches it off) |
 | `HD_HTTPS` | `no` | `yes`: also https on `HD_HTTPS_PORT` with a self-signed certificate, and the QR code uses it, so the phone's voice recorder works (implies `HD_LAN=yes`; `./start.sh https`) |
@@ -103,13 +110,29 @@ If `GEMINI_API_KEY` in `.env` is empty, a key already saved in n8n is kept (a ke
 | `HD_DEV` | `no` | `yes`: the robot container uses the source folders instead of the copies in the image ([docker/compose.dev.yaml](docker/compose.dev.yaml)); after a change: `docker restart hd_robot` |
 | `POSTGRES_*`, `HD_LLM_READER_PASSWORD`, `TZ` | generated / found | database and time zone |
 
-### Changing the AI model
+### The AI: Gemini models, then Claude
 
-Open the workflow, double-click the **Config** node. `relevancy_model` and `main_model` are the Gemini model names (`gemini-flash-latest` and `gemini-pro-latest`: Google's names for its newest fast and strongest models). For faster answers in a live demo, set `main_model` to `gemini-flash-latest` too. Robot address, messages, the 10-minute timeout and the phone link are in the same node.
+A free Gemini key has a small quota **per model** (a few dozen calls a day for some models, a few per minute for others), and Google sometimes answers "overloaded" (503) or slowly. So every AI call runs through a **model chain**, all of it visible on the n8n canvas:
+
+1. **Which AI models are resting?** reads the table `ai_model_status`.
+2. **pick the next model**: the Gemini models of `gemini_models` in order (default `gemini-3.1-flash-lite, gemini-flash-lite-latest, gemini-3-flash-preview, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash`), then Claude. Models that rest are skipped (they stay at the very end of the list as a last resort).
+3. **Gemini or Claude?** → the call. Claude only if **Claude key set?** says yes, and never for a voice note alone (**Can Claude read it?**: Claude cannot listen; the customer is then asked to type).
+4. **Out of quota or busy?** A 429 (quota), 503 / 529 (overloaded) or a timeout makes the model **rest** (**Remember: the model rests**): 60 minutes for a daily quota, about a minute for a per-minute limit or "busy". Later calls skip it, so the customer does not wait for a model that is known to be out.
+5. **Another model to try?** while models and time are left (the customer never waits more than about 25 s: AI 1 has 11 s, AI 2 the rest of 23 s). Otherwise the phone shows "please send it again" (or "please type it" for a voice note), and the log says which models were tried and why they failed.
+
+AI 3 (repair steps, after the reply) uses n8n's Basic LLM Chain with the first two Gemini models that are not resting, then a Claude chain if they fail.
+
+**Claude** (Anthropic's Messages API) is the last fallback for all three AIs, used only with a key: `claude-haiku-5-5` for AI 1 (yes/no, fast) and `claude-sonnet-5-5` for AI 2 and AI 3 (photo + catalogue), adaptive thinking at low effort, JSON through structured outputs, the photo as a base64 image block. Get a key at https://console.anthropic.com/settings/keys (paid per use; a visit costs well under a cent with Haiku, a few cents with Sonnet) and add it with `./start.sh claude-key`. To make Claude the first choice instead, set `HD_AI_PROVIDER=claude` in `.env` and run `./start.sh setup`.
+
+`./status.sh` shows which AIs have a key and which models are resting right now, and why. To see which model answered each call: `python3 tools/log_check.py` (the `ai_call` lines name the provider and model; `ai_gave_up` means every model failed).
+
+All of this is in the **Config** node (open the workflow, double-click it): `ai_provider`, `gemini_models`, `claude_fast_model`, `claude_main_model`, the rest times (`model_rest_*`) and the time limits. Changes made there are replaced by the next `./start.sh setup`; for lasting changes use `.env` (`HD_AI_PROVIDER`, `HD_GEMINI_MODELS`) or [n8n/build_workflow.py](n8n/build_workflow.py). Robot address, messages, the 10-minute timeout and the phone link are in the same node.
+
+Measured on the free key (15 Nov 2026): `gemini-3.1-flash-lite` and `gemini-flash-lite-latest` answer a photo request in 2 to 5 s; `gemini-3.5-flash` and `gemini-3.6-flash` work but take about 9 s even for a tiny request (last in the list); `gemini-3.7-flash` and `gemini-3.8-flash` reject the "minimal" thinking level, and `gemini-2.5-*` are no longer offered to new keys.
 
 ### Running without a Gemini key (stand-in AI)
 
-For trying the flow, or as a fallback if the internet is down during a demo, a stand-in answers the three AI calls with simple keyword rules. It understands nothing: it knows decks, toilets, wall holes, leaking faucets, painting and hanging things.
+For trying the flow, or as a fallback if the internet is down during a demo, a stand-in answers the three AI calls with simple keyword rules, in Gemini's format and in Claude's. It understands nothing: it knows decks, toilets, wall holes, leaking faucets, painting and hanging things. Test words in a message make it fail on purpose (out of quota, overloaded: see [n8n/test/fake_gemini.py](n8n/test/fake_gemini.py)), which is how `tools/edge_case_test.py` exercises the model chain.
 
 It runs as the Compose service `fake-ai` (profile `offline`, from the robot image; n8n calls `http://fake-ai:8010`). Switch between the real AI and the stand-in with:
 
@@ -131,7 +154,7 @@ Paste a key for Gemini, or press Enter for the stand-in (a key already in `.env`
 ./status.sh
 ```
 
-`./status.sh` (also `./start.sh status`) checks each part in plain words (Docker, database, n8n, workflow switched on, Gemini key saved or stand-in running, robot and Nav2, RViz) and prints the fix for each problem. `./reset.sh` deletes all visits and logs and sends the robot back to its dock (keeps the items, the key and the n8n login). `./stop.sh remove` also removes the containers and their network; the data volumes `homedepot_hd_pgdata` and `homedepot_hd_n8ndata` stay until you delete them yourself (`docker volume rm ...`).
+`./status.sh` (also `./start.sh status`) checks each part in plain words (Docker, database, n8n, workflow switched on, Gemini key saved or stand-in running, Claude key saved or not, AI models resting after "out of quota" or "busy", robot and Nav2, RViz) and prints the fix for each problem. `./reset.sh` deletes all visits and logs and sends the robot back to its dock (keeps the items, the key and the n8n login). `./stop.sh remove` also removes the containers and their network; the data volumes `homedepot_hd_pgdata` and `homedepot_hd_n8ndata` stay until you delete them yourself (`docker volume rm ...`).
 
 **RViz** runs inside the robot container on a virtual 1920x1080 screen and is shown in the browser at http://localhost:6080: a clean page (no noVNC controls, no password) that connects by itself, scales the picture to the window in 16:9 and reconnects after a restart; `?view_only=1` ignores the mouse, and the full noVNC page is still at `/vnc.html`. The entrypoint starts the simulation with `rviz:=false` and runs `rviz2` itself, full screen (F11 through `xdotool`: no menu, toolbar, panels or status bar), with [docker/robot/record.rviz](docker/robot/record.rviz) (`HD_RVIZ_VIEW=top`: a TopDownOrtho view framing the whole 60 x 40 m store like the web map, x to the right and y to the back, so the entrance and registers are at the bottom and aisle 1 on the left; planned route bright and thick, laser scan faint, map dim, background the theme's dark neutral, 12 frames a second) or [docker/robot/record-3d.rviz](docker/robot/record-3d.rviz) (`HD_RVIZ_VIEW=3d`: the *Whole store* camera of `robot/sim/store.rviz`). It renders in software (no GPU needed), which costs 1 to 2 CPU cores; `HD_RVIZ=no` in `.env` skips it.
 
@@ -203,6 +226,21 @@ Type-checks (TypeScript strict) and writes `ui/dist/`: `index.html` (stage), `ph
 ```
 
 (`./tools.sh` runs the Python tools inside the robot container, pointed at the Compose network, so the computer needs no Python. With Python 3 on the computer, `python3 tools/full_flow_test.py` works too: n8n and the robot service are published on localhost:5678 and :8000.) It presses the kiosk button, sends an unrelated message (must be refused), a real request, answers the follow-up questions, chooses two items, waits for the robot at each shelf (light on, then arrival), checks that "I am done" is refused before arrival, answers "no", prints the repair steps, and waits for the robot to dock. It ends with `ALL STEPS PASSED`. Pass your own sentence as an argument to try another request.
+
+### The awkward cases and the model chain (stand-in AI)
+
+`python3 tools/edge_case_test.py` (about 4 minutes) plays the cases that are hard to show by hand: AI failures, sloppy questions, double taps, a slow answer for a visit that was closed meanwhile, the timeout, and the model chain (the first Gemini model out of quota → the next one, and it rests; every Gemini model out of quota → Claude, for AI 1, AI 2 with a photo, and AI 3; every model down → "please send it again" within 25 s; a voice note alone → "please type it"; photo-first replies with `understood` and `role`). It needs the stand-in AI (`./start.sh key`, Enter) and, for the Claude cases, any dummy `ANTHROPIC_API_KEY` in `.env` (offline, Claude's calls go to the stand-in too); `HD_EXPECT_CLAUDE=no` checks the no-key behaviour instead. Best run on a second copy of the stack: set `HD_N8N_URL`, `HD_ROBOT_URL` and `HD_PG_CONTAINER` (see the top of the file).
+
+### Photos and voice notes against the real AI
+
+```bash
+python3 tools/make_test_photos.py                      # draws 5 photos into tools/photos/ (needs Pillow)
+python3 tools/photo_test.py tools/photos/drywall_hole.jpg "help"
+python3 tools/photo_test.py --audio my_voice_note.wav
+python3 tools/photo_test.py --all --first              # every photo, first reply only (fewer AI calls)
+```
+
+Each run is a real visit: it prints what the AI understood (`understood`), what it asked, and the items with their `role`, with the time each answer took. With a free key, mind the quota: a photo to the item list is about 4 AI calls.
 
 ### Each webhook on its own (kiosk / phone → n8n)
 
@@ -345,11 +383,11 @@ The n8n execution id in each row (`x1234` in the time line) is the run to open i
 
 ## Things to know
 
-- **The AI calls have not been run against the real Gemini API here** (no key was available): the whole flow was tested with the stand-in. The request format follows Google's `generateContent` API with JSON output; if the first real request fails, open the failed run in n8n → **Executions** and look at the *AI 1* node's error.
+- **The AI** was tested against the real Gemini API on a free key (photos, a voice note, the whole visit) and, for the model chain and every failure path, against the stand-in. **Claude has not been called for real** (no Anthropic key was available): its requests follow Anthropic's Messages API documentation and were checked against the stand-in, which answers in the same format. If the first real Claude call fails, open the failed run in n8n → **Executions** and look at the *(Claude)* node's error.
 - Starting a new visit at the kiosk closes any visit still open: one robot, one customer.
 - If Nav2 cannot reach a shelf after three attempts, the service reports it as reached so the visit can continue (robot failures are out of scope).
 - The demo stage draws the QR code itself (no internet needed); the link under it always works.
 - No logins or security anywhere: the random session id in the phone link is the only key. n8n and RViz listen on this computer only (127.0.0.1), PostgreSQL only inside the Compose network; the demo port too unless `HD_LAN=yes`.
-- `.env` holds the passwords and the Gemini key: it is in `.gitignore`; never commit or share it. The scripts never print the key.
+- `.env` holds the passwords and the API keys: it is in `.gitignore`; never commit or share it. The scripts never print a key.
 - The robot image is built for the computer's own CPU (x86_64 or arm64). Every base image (`ros:humble-ros-base-jammy`, `node:22`, `postgres:16.16`, `n8n:2.47.7`) is multi-arch, and every apt package and Python wheel in the image exists for arm64; the full stack has been run on Ubuntu x86_64 only so far.
 - The scripts are written for macOS's bash 3.2 and BSD tools (checked with bash 3.2.57). On a Mac, keep the demo folder in your home folder (Docker Desktop shares it with containers by default).

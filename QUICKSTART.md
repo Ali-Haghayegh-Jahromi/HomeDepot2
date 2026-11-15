@@ -20,6 +20,8 @@ Your computer needs about 8 GB of memory and 10 GB of free disk space. Keep the 
 
 The first start asks for a **Gemini API key** (the AI). Get one free at https://aistudio.google.com/apikey: sign in with a Google account, press *Create API key*, copy it and paste it into the window (you will not see it while you paste), then press Enter. No key? Just press Enter: the demo then uses a simple stand-in AI that needs no internet but understands only a few jobs (decks, toilets, holes in walls, leaking faucets, painting, hanging things). You can add or change the key later with `./start.sh key`.
 
+Then it asks once for an **optional Anthropic key** (Claude, a backup AI). A free Gemini key can run out of quota during a busy day; the demo then tries Google's other free models by itself, and with an Anthropic key it switches to Claude instead of asking the customer to try again. Get one at https://console.anthropic.com/settings/keys (paid per use: a demo costs a few cents), paste it the same way, or press Enter to skip. Add it later with `./start.sh claude-key`.
+
 **The first start takes 10 to 20 minutes** (it downloads about 2 GB and builds the robot). After that, starting takes about a minute. When it is ready, your browser opens the demo by itself and the window shows:
 
 ```
@@ -90,7 +92,9 @@ Run `./status.sh` (Mac: in Terminal, in the demo folder). It checks each part an
 | The phone cannot open the QR link | Same Wi-Fi? Started with `./start.sh lan` (or `https`)? Then run `./status.sh`: it shows the firewall command to run. |
 | The QR code shows `localhost` | Start with `./start.sh lan`. If the computer has several networks (cable and Wi-Fi), put the Wi-Fi address in `.env` as `HD_PUBLIC_HOST=192.168.x.x` and start again. |
 | The phone says "Voice notes aren't supported" or asks for the microphone in vain | Voice notes need https: `./start.sh https`, and accept the warning once (section 5). Typing and photos work without it. |
-| The AI answers "Sorry, something went wrong" or nothing happens after typing | The Gemini key is wrong or has no quota left. Run `./start.sh key` and paste a working key, or press Enter there to use the stand-in AI. |
+| The phone keeps saying "Sorry, I couldn't process that just now. Please send it again." | Every AI model was out of quota or busy. Run `./status.sh`: it lists the models that are resting and until when (a daily quota resets after midnight, Pacific time). Wait a minute and send again, add a Claude key with `./start.sh claude-key`, or use a new Gemini key with `./start.sh key` (Enter there switches to the stand-in AI). |
+| The AI answers "Sorry, something went wrong" or nothing happens after typing | The Gemini key is wrong. Run `./start.sh key` and paste a working key, or press Enter there to use the stand-in AI. |
+| "I can't listen to voice notes right now. Please type your message" | Gemini was out of quota or busy, and Claude (the backup) cannot listen to voice notes. Type the message, or add a photo. |
 | The robot does not move, or `./status.sh` says the robot is not ready | Wait a minute (the navigation starts slowly the first time). Still stuck: `./stop.sh`, then start again. |
 | The computer gets slow or hot | The 3D view uses a lot of computer power. In `.env` set `HD_RVIZ=no` and start again; the map on the demo stage still shows the robot. |
 | Something else | `./stop.sh`, then start again. Still broken: send the output of `./status.sh` and `./tools.sh check` to the developers. |

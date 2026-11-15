@@ -1,10 +1,11 @@
 # The workflow, node by node
 
-The workflow is one n8n workflow called **Home Depot guide robot** (98 nodes, built by `n8n/build_workflow.py`). n8n is the backbone: it receives every call, holds every decision, and tells the other parts what to do.
+The workflow is one n8n workflow called **Home Depot guide robot** (132 nodes, built by `n8n/build_workflow.py`). n8n is the backbone: it receives every call, holds every decision, and tells the other parts what to do.
 
 ```
 phone / kiosk ──► n8n (the brain: every decision on the canvas)
-                    ├── Gemini           advice: AI 1 relevant?, AI 2 question or items, AI 3 repair steps
+                    ├── Gemini / Claude  advice: AI 1 relevant?, AI 2 question or items, AI 3 repair steps
+                    │                    (several free Gemini models in turn, Claude as the last fallback)
                     ├── PostgreSQL       memory: visits, requests, conversation, the store catalogue
                     └── robot service    hands: drive to a shelf, shelf-tag lights, go home
 ```
@@ -26,7 +27,7 @@ The AI never acts: it advises, n8n decides. Nothing reaches the main AI without 
 3. The answer to the phone is always a **screen**: which page to show (`input`, `question`, `sorry`, `items`, `guiding`, `arrived`, `anything_else`, `finished`, `timed_out`) and its content. The phone also asks "what should I show now?" every second or so, which is how it learns what the robot did.
 4. Every path that changes the visit ends in the same nodes: save (only if nothing else changed the visit meanwhile), tell the robot (one order at a time), build the reply, reply.
 
-Node types you will see: **Webhook** (start on a call), **Schedule Trigger** (start on a timer), **Edit Fields** (set values), **If** / **Switch** (decide), **Postgres** (run SQL), **Code** (shape data), **HTTP Request** (call another service), **Split Out** + **Loop Over Items** (one robot order at a time), **Basic LLM Chain** + **Google Gemini Chat Model** + **Structured Output Parser** (n8n's AI nodes, for AI 3), **Respond to Webhook** (send the answer).
+Node types you will see: **Webhook** (start on a call), **Schedule Trigger** (start on a timer), **Edit Fields** (set values), **If** / **Switch** (decide), **Postgres** (run SQL), **Code** (shape data), **HTTP Request** (call another service), **Split Out** + **Loop Over Items** (one robot order at a time), **Basic LLM Chain** + **Google Gemini Chat Model** / **Anthropic Chat Model** + **Structured Output Parser** (n8n's AI nodes, for AI 3), **Respond to Webhook** (send the answer).
 
 ## 1. Who is calling?
 
@@ -40,7 +41,7 @@ Node types you will see: **Webhook** (start on a call), **Schedule Trigger** (st
 | **Phone: what to show now** | Webhook `GET /help/status`. The phone's regular question; it does not count as customer activity. |
 | **Robot event** | Webhook `POST /robot/event`. The robot service reports `near`, `arrived` or `home`. |
 | **Every minute** | Schedule Trigger. Starts the timeout check once a minute. |
-| **Config** | Edit Fields. **All settings in one place**: the Gemini model names (`relevancy_model`, `main_model`, `fallback_model`) and how much AI 1 / AI 2 may "think", the time limits (`ai_wait_ms`: the customer never waits longer than about this; `relevancy_timeout_ms`, `main_try_ms`), the robot service address, the phone link, every message shown to the customer, the timeout (10 minutes), the maximum list length (8). It also works out which webhook started this run (`endpoint`). To swap the AI model, change it here. |
+| **Config** | Edit Fields. **All settings in one place**: the AI providers (`ai_provider`: Gemini first or Claude first; `gemini_models`: the Gemini models to try, in order; `claude_key_set`, `claude_fast_model`, `claude_main_model`, their effort and API version), how long a model rests after "out of quota" or "busy" (`model_rest_*`), how much the Gemini models may "think", the time limits (`ai_wait_ms`: the customer never waits longer than about this; `relevancy_budget_ms` and `relevancy_timeout_ms` for AI 1, `main_try_ms` per AI 2 try, `min_try_ms`), the robot service address, the phone link, every message shown to the customer, the timeout (10 minutes), the maximum list length (8). It also works out which webhook started this run (`endpoint`). To swap the AI models, change them here (or in `.env`: `HD_AI_PROVIDER`, `HD_GEMINI_MODELS`). |
 | **Which call is this?** | Switch: *kiosk button* → section 2, *every minute* → section 8, *phone or robot* → section 3. |
 
 ## 2. Kiosk button: a new visit (top lane)
@@ -70,21 +71,37 @@ Node types you will see: **Webhook** (start on a call), **Schedule Trigger** (st
 
 Steps 2 to 5 of the brief. Nothing reaches the main AI without passing the relevancy AI.
 
+### The model chain (the same nodes for AI 1 and for AI 2)
+
+A free Gemini key has a small quota per model, and Google is sometimes overloaded or slow, so no AI call depends on one model. Each AI call goes through the same visible loop (the node names end in "(AI 1)" or "(AI 2)"):
+
 | Node | What it does |
 |---|---|
-| **Write the relevancy prompt** | Code. The request for AI 1: the customer's text, photo and voice recording exactly as sent, plus one piece of context: if the assistant just asked a follow-up question, the AI is told that question, so a short answer like "about $30" is not judged unrelated. |
-| **AI 1: relevancy check** | HTTP Request to Gemini (`relevancy_model`, cut off after `relevancy_timeout_ms`). It may only answer `{"relevant": true}` or `{"relevant": false}`. Attempts to change the AI's instructions count as not relevant. |
-| **Read the relevancy answer** | Code. Reads the yes/no and logs the call. |
-| **Did AI 1 answer?** | If. No → **Try AI 1 again?** (If: a second try, after a short pause, loops back to AI 1) → no → **Ask to send it again (AI 1)**: nothing reaches AI 2 and nothing changes; the phone stays where it was (a waiting question stays) with "please send it again". |
+| **Which AI models are resting?** | Postgres, once per customer input. The models that recently answered "out of quota" or "busy", and until when they rest (table `ai_model_status`). |
+| **AI 1: pick the next model** / **AI 2: pick the next model** | Code (the loop's start). The next model of the chain: the Gemini models of `gemini_models` in order, then Claude (`ai_provider = claude`: Claude first), without the ones already tried in this call and the resting ones (those stay at the very end, as a last resort). Builds that model's request and its time limit: AI 1 until `relevancy_budget_ms` after the call arrived (at most `relevancy_timeout_ms` per try), AI 2 until `ai_wait_ms` (at most `main_try_ms` per try). |
+| **Gemini or Claude?** | Switch. *Gemini* → the HTTP Request **AI 1: relevancy check (Gemini)** / **AI 2: understand the need (Gemini)** (`generateContent`, JSON with a response schema). *Claude* → **Claude key set?** |
+| **Claude key set?** | If (`claude_key_set`, set when `./start.sh` imports a key). No → **Skip Claude: no key**. |
+| **Can Claude read it?** | If. Claude cannot listen to voice recordings: for a voice note alone → **Skip Claude: voice note**. Otherwise → **AI 1: relevancy check (Claude)** / **AI 2: understand the need (Claude)** (Anthropic Messages API: the photo as a base64 image block, JSON through structured outputs, `claude_fast_model` for AI 1, `claude_main_model` for AI 2). |
+| **Read the relevancy answer** / **Read the main answer** | Code. Reads either provider's answer (below), or why the call failed: `quota_day` / `quota` (HTTP 429), `busy` (503 / 529 / 5xx), `timeout`, `model` (404: a wrong model name), `key` (401 / 403), `request` (another 400), `bad_answer` (no JSON, a garbled question). With it, how long the model should rest (`rest_s`): an hour for a daily quota, the "retry in N s" Google gives (at least 20 s) for a rate limit, 90 s when busy or too slow (a timeout counts only if the model had a full try), 2 hours for a wrong model name; nothing for a bad answer. |
+| **Did AI 1 answer?** / **Is AI 2's answer usable?** | If. Yes → on to the decisions below. No → **Out of quota or busy?** |
+| **Out of quota or busy?** | If (`rest_s > 0`). Yes → **Remember: the model rests** (Postgres: `resting_until` in `ai_model_status`, so later calls skip it). |
+| **Another model to try?** | If: models left in the chain, and at least `min_try_ms` of the time left. Yes → back to **pick the next model**. No → **A voice note Claude could not hear?** → yes: **Ask to type it instead** ("Sorry, I can't listen to voice notes right now. Please type your message instead"); no: **Ask to send it again** ("Sorry, I couldn't process that just now. Please send it again."). Either way nothing changes for the visit; the phone stays where it was (a waiting question stays), and the log lists every model tried and why it failed. |
+
+So with Gemini's first model out of quota the customer waits a quarter of a second longer (a 429 comes back at once), and the next call does not even try that model. With every Gemini model out, Claude answers (if a key is set); with nothing left, the customer gets "please send it again" within the time limit.
+
+### The decisions
+
+| Node | What it does |
+|---|---|
+| **Write the relevancy prompt** | Code. The request for AI 1, for Gemini and for Claude: the customer's text, photo and voice recording exactly as sent, plus one piece of context: if the assistant just asked a follow-up question, the AI is told that question, so a short answer like "about $30" is not judged unrelated. A photo of something broken in or around a home counts as relevant even with no text. It may only answer `{"relevant": true}` or `{"relevant": false}`; attempts to change the AI's instructions count as not relevant. |
 | **Relevant to home repair?** | If. No → **Say sorry** (Edit Fields): the sorry message; the input page again in the same visit, or the item list if that is what the phone shows; a follow-up question that was waiting stays on screen. The message is stored in the history, marked not relevant. |
 | **Read the item catalogue** | Postgres, **with the read-only user**. Reads the 100 store items. This user can read the item table and nothing else, which is how the AI is limited to this database: the AI never talks to the database itself, it only sees these rows. |
-| **Write the main prompt** | Code. The request for AI 2: its rules, the catalogue, the whole conversation of this visit (earlier requests included, refused messages marked), the budget if known, and the new input with its photo/voice. The rules: recommend only catalogue items; assume as little as possible and ask when unsure; one short question at a time; always learn the budget before recommending; order the list by what is most needed, then other materials, then tools; pick the quality that fits the budget. |
-| **AI 2: understand the need** | HTTP Request to Gemini (`main_model`; the first try is cut off after `main_try_ms`, later tries get what is left of `ai_wait_ms`). A fixed JSON shape: a follow-up question (with tap-to-answer options) or a list of SKUs with a one-line reason each. |
-| **Read the main answer** | Code. Checks the answer instead of trusting it: every SKU against the catalogue (an invented item can never reach the phone), tools moved to the end, the list cut to 8; markdown removed from a question, choices written into the question text turned into tap-to-answer options; a garbled question (leaked notes, another script, loops) counts as unusable; a missing title is filled in. Works out the budget (known, or stated now) and what to remember. |
-| **Is AI 2's answer usable?** | If. No (error, timeout, no JSON, garbled question) → **Time left for another try?** (If: at most 3 tries, and only while more than 4 s of the customer's `ai_wait_ms` are left) → yes → **Prepare the next try** (Code: try 2 on `fallback_model` with its own thinking level, try 3 on `main_model`) → back to AI 2; no → **Ask to send it again (AI 2)**. |
+| **Write the main prompt** | Code. The request for AI 2 (Gemini and Claude): its rules, the catalogue, the whole conversation of this visit (earlier requests included, refused messages marked), the budget if known, and the new input with its photo/voice. The rules: recommend only catalogue items; **a photo first**: say what it shows (the item, the damage, roughly its material and size) and use it as if the customer had said it, never ask about what it shows, at most one question after a photo; assume as little as possible otherwise; one short question at a time; never ask the budget itself (n8n does, below); give every item a role (`main`, `alternative`, `tool`) and keep the main items and tools within the budget; `understood`: one sentence on what it understood ("I can see a cracked deck board..."). |
+| **Read the main answer** | Code. Checks the answer instead of trusting it: every SKU against the catalogue (an invented item can never reach the phone), each item's role (a Tools-department item is a `tool`; an alternative with no main item before it becomes `main`), tools moved to the end, the list cut to 8; full-width punctuation made plain, markdown removed from a question, choices written into the question text turned into tap-to-answer options; a garbled question (leaked notes, another script, loops) counts as unusable; `understood` cleaned (a question inside it is left out); a missing title is filled in. Works out the budget (known, or stated now), whether the main items and tools fit it, and what to remember. |
 | **Did the AI ask a question or pick items?** | Switch: *asked a question* → **Ask the follow-up question**; *picked items* → **Budget known?**; *no usable item* (every SKU was invented) → **Say no matching items**. |
-| **Budget known?** | If (known, or asked once already). Yes → **Show the item list**. No → **Ask for the budget**: the brief's rule "always learn the budget before recommending", enforced by n8n even when the AI skips it. |
-| **Package the answer for saving** | Code. The chosen screen plus what to remember: the customer's message (for a photo or recording, what the AI understood from it), the assistant's reply, the request's title and budget, the suggested items. |
+| **Budget known?** | If (known, or asked once already). No → **Ask for the budget** (the Config node's `budget_question`, with the AI's `understood`): the brief's rule "always learn the budget before recommending". The AI is told not to ask about the budget itself (its own budget questions sometimes rambled), so this is the usual path; the next answer goes to the AI again, now with the budget. Yes → **Main items and tools within the budget?** |
+| **Main items and tools within the budget?** | If (the alternatives do not count). Yes → **Show the item list**. No → **Leave out tools over the budget** (Code: the most expensive tools are left out until it fits; the main items always stay) → **Show the item list**, whose message then names what was left out. |
+| **Package the answer for saving** | Code. The chosen screen plus what to remember: the customer's message (for a photo or recording, what the AI understood from it), the assistant's reply, the request's title and budget, the suggested items. Every `question` and `items` screen carries `understood` (the phone's "Here's what I see"). |
 
 The loop "question → answer → relevancy → main AI" repeats as often as needed, because every answer is simply a new `/help/request` call.
 
@@ -97,7 +114,7 @@ Steps 6 and 7 of the brief, and the start of step 8.
 | **Look up the chosen items** | Postgres. The chosen items in the customer's order, each with its shelf position on the robot's map (aisle + shelf → x, y, direction, and where the shelf-tag light is). |
 | **Plan the trip** | Code. Keeps the customer's order (no route optimisation), and only items of this request's list, each once, at most 8 (the phone's message says if some were left out). Writes the prompt for AI 3. |
 | **Any items chosen?** | If. Yes → **Start the tour**: the phone shows `guiding` for the first item and the robot gets "drive to item 1". No → **Ask anything else (nothing chosen)**. |
-| **Repair steps to write?** → **AI 3: repair steps and videos** → **Keep the repair steps** → **Save the repair steps** | After the reply has gone out (bottom right): the customer does not wait for them. AI 3 is n8n's **Basic LLM Chain** with two **Google Gemini Chat Model** nodes (`main_model`, and `fallback_model` if the first fails) and a **Structured Output Parser** (a JSON schema: `steps`, `video_queries`). At most 6 short steps for the items actually chosen, and 2 or 3 YouTube search phrases; each phrase becomes `https://www.youtube.com/results?search_query=<phrase>`. Both are stored with the request and shown at the end of the visit. If AI 3 fails, the summary still gets a video search for the job. |
+| **Repair steps to write?** → **Which AI models are resting? (AI 3)** → **AI 3: pick the models** → **Claude first? (AI 3)** → **AI 3: repair steps (Gemini)** or **(Claude)** → **Steps written?** → **Keep the repair steps** → **Save the repair steps** | After the reply has gone out (bottom right): the customer does not wait for them. AI 3 is n8n's **Basic LLM Chain**: the Gemini one has two **Google Gemini Chat Model** nodes (the first two models of `gemini_models` that are not resting), the Claude one an **Anthropic Chat Model** (`claude_main_model`); each has a **Structured Output Parser** (a JSON schema: `steps`, `video_queries`). Claude goes first only with `ai_provider = claude`. If the first chain writes no steps, **Try Claude for the steps?** (key set, not tried yet) / **Try Gemini for the steps?** (not tried yet) give the other one a turn. At most 6 short steps for the items actually chosen, and 2 or 3 YouTube search phrases; each phrase becomes `https://www.youtube.com/results?search_query=<phrase>`. Both are stored with the request and shown at the end of the visit. If AI 3 fails, the summary still gets a video search for the job. |
 
 ## 6. "I am done" and "anything else?"
 
@@ -141,11 +158,11 @@ Steps 6 and 7 of the brief, and the start of step 8.
 
 | AI call | n8n node | Why |
 |---|---|---|
-| **AI 3** repair steps + videos | **Basic LLM Chain** + 2 × **Google Gemini Chat Model** (main + fallback) + **Structured Output Parser** | Text only, runs after the reply, so it needs no voice input and no hard time limit. Measured on the free key: 1.8 s. The Chat Model node has no thinking-level setting, so AI 3 uses the model's default (it was `low`). |
-| **AI 1** relevant? and **AI 2** question or items | **HTTP Request** to Gemini's `generateContent`, with every retry and fallback decision as visible If nodes | n8n's Gemini nodes cannot meet four requirements here: (1) **voice recordings**: the Chat Model / Basic LLM Chain / AI Agent pass only images as binary, and the `googleGemini` node's text operation takes no media at all; (2) **a per-call time limit**: none of them has a timeout, and LangChain retries a 429/503 with back-off on its own, so the customer's 25 s could not be guaranteed; (3) **the thinking level** (`minimal` keeps AI 2 at 1.5-5 s); (4) **Gemini's JSON mode with a response schema** (fewer unusable answers). |
+| **AI 3** repair steps + videos | **Basic LLM Chain** + 2 × **Google Gemini Chat Model** (first + second free model), and a second **Basic LLM Chain** + **Anthropic Chat Model**, each with a **Structured Output Parser** | Text only, runs after the reply, so it needs no voice input and no hard time limit. Measured on the free key: 1.6 s. The Gemini Chat Model node has no thinking-level setting, so AI 3 uses the model's default; the Anthropic one runs adaptive thinking at low effort. |
+| **AI 1** relevant? and **AI 2** question or items | **HTTP Request** to Gemini's `generateContent` and to Anthropic's Messages API (`/v1/messages`), with every model choice, retry and fallback decision as visible If / Switch nodes | n8n's Gemini nodes cannot meet four requirements here: (1) **voice recordings**: the Chat Model / Basic LLM Chain / AI Agent pass only images as binary, and the `googleGemini` node's text operation takes no media at all; (2) **a per-call time limit**: none of them has a timeout, and LangChain retries a 429/503 with back-off on its own, so the customer's 25 s could not be guaranteed and a model out of quota could not be skipped at once; (3) **the thinking level** (`minimal` keeps AI 2 at 1.5-5 s); (4) **Gemini's JSON mode with a response schema** (fewer unusable answers). For Claude the HTTP Request gives the same time limit and structured outputs (`output_config.format`), with the photo as a base64 image block. |
 | AI 2 as an **AI Agent** with a read-only **Postgres Tool** on `store_items` | not adopted | Measured on the free key with `gemini-flash-lite-latest`: 2.9 s and 2.4 s (two model calls + one SQL query each), so latency alone would have been fine. It was not adopted because of the voice/timeout/thinking limits above, and because the catalogue is only 100 rows: pasting it costs one model call and keeps every answer checkable against the same list. The catalogue is still read by n8n with the read-only database user. |
 
-The stand-in variant (`HD_GEMINI_URL=http://localhost:8010`) points AI 1 and AI 2 at the stand-in AI, and AI 3's Chat Model nodes at the credential **HD Gemini stand-in (no key)**, whose `host` is the stand-in (`./n8n/test/add_standin_credential.sh` creates it). The stand-in (`n8n/test/fake_gemini.py`) also answers in the format the Structured Output Parser asks for.
+The stand-in variant (`HD_GEMINI_URL=http://localhost:8010`; offline mode, `http://fake-ai:8010`) points every Gemini and Claude node at the stand-in AI, through the credentials **HD Gemini stand-in (no key)** and **HD Claude stand-in (no key)** (dummy keys, so a real key never goes there). The stand-in (`n8n/test/fake_gemini.py`) answers Gemini's and Anthropic's formats, also the one the Structured Output Parser asks for, and fails on purpose for test words (out of quota, overloaded) so that the model chain can be tested.
 
 ## The event log
 
@@ -154,8 +171,10 @@ Every run leaves rows in the `event_log` table, one per thing that happened, eac
 | Node | Event |
 |---|---|
 | Save new session | `session_start`, and `session_closed_by_new_visit` for a visit it closes |
-| Read the relevancy answer, Read the main answer, Keep the repair steps | `ai_call`: node, model, try number (`attempt`), duration, HTTP/API error, finish reason, tokens (prompt, answer, thinking; not for AI 3), parsed or not, missing fields, the raw answer when it was unusable, the relevancy verdict, AI 2's answer type, the question as the AI wrote it and as shown (added by Package the answer for saving), items kept/suggested, SKUs dropped as unknown, the budget rule, AI 3's step count |
-| Say sorry, Ask to send it again (AI 1 / AI 2) | `refused_not_relevant`, or `ai_failed_reply` when the customer got "please send it again" |
+| Read the relevancy answer, Read the main answer, Keep the repair steps | `ai_call`: node, provider (`gemini` / `claude`), model, try number (`attempt`), why it failed (`failure`) and how long the model now rests (`rest_s`), the resting models it skipped (`skipped_resting`), duration, HTTP/API error, finish reason, tokens (prompt, answer, thinking; not for AI 3), parsed or not, missing fields, the raw answer when it was unusable, the relevancy verdict, AI 2's answer type, the question as the AI wrote it and as shown (added by Package the answer for saving), items kept/suggested, SKUs dropped as unknown, the budget rule, AI 3's step count |
+| Read the relevancy answer, Read the main answer | `ai_skip`: Claude was skipped (`no_claude_key`, or `voice_note`: it cannot listen) |
+| Package the answer for saving | adds to AI 2's `ai_call`: what was shown, `understood` as shown, the roles, `items_total` and `items_total_budgeted` (main items + tools), `items_over_budget`, `left_out_for_budget` |
+| Say sorry, Ask to send it again / Ask to type it instead (AI 1 / AI 2) | `refused_not_relevant`, or `ai_failed_reply` when the customer got "please send it again" (or "please type it"), with every model tried and the ones now resting |
 | Plan the trip | `items_chosen` (SKUs sent, on the trip, not on the list, over the limit) |
 | Start the tour, Find the next item, Guide to the next item | `guide_to_item`, `item_done` |
 | Back to the input page, Finish the visit | `anything_else`, `session_end` |
@@ -173,8 +192,8 @@ Every run leaves rows in the `event_log` table, one per thing that happened, eac
 |---|---|---|---|
 | 1 | kiosk | 1 → 2 → 9 | `input` |
 | 2 | phone: "tell me a joke" | 1 → 3 → 4 (Relevant? no → Say sorry) → 9 | `sorry` |
-| 3 | phone: "a board on my deck is cracked" | 1 → 3 → 4 (asked a question) → 9 | `question` |
-| 4 | phone: "wood, about $80" | 1 → 3 → 4 (picked items, budget known) → 9 | `items` |
+| 3 | phone: a photo of the cracked deck board, "deck" | 1 → 3 → 4 (picked items, budget not known → Ask for the budget, with "I can see a cracked deck board...") → 9 | `question` |
+| 4 | phone: "about $80" | 1 → 3 → 4 (picked items, budget known, within the budget) → 9 | `items` |
 | 5 | phone: chooses 2 items | 1 → 3 → 5 → 9 (robot: drive to item 1), then AI 3 after the reply | `guiding` |
 | 6 | robot: `near` | 1 → 3 → 7 (near, still guiding) → 9 (light on) | `guiding`, light on |
 | 7 | robot: `arrived` | 1 → 3 → 7 (arrived) → 9 | `arrived` |
@@ -194,3 +213,4 @@ To watch this for real: n8n → the workflow → **Executions**. Each row is one
 | `sessions` | visit | status, the phone's current screen, time of the last customer input, revision number (`rev`, for safe overlapping saves) |
 | `requests` | thing the customer asked for | title, budget, suggested items, chosen items in order, which one the robot is on, repair steps, video links |
 | `messages` | line of conversation | who said it, what kind, the text, whether it passed the relevancy check |
+| `ai_model_status` | AI model that failed | the model chain's memory: until when it rests (`resting_until`), why (`quota_day`, `quota`, `busy`, `timeout`, `model`, `key`), the HTTP code and the error, how often. `./status.sh` lists the resting ones |
