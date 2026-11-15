@@ -7,8 +7,8 @@ One take of the live journey on the **studio view** (kiosk, the customer's real 
 | **Technical depth & execution** ("does it actually work?") | One unbroken live take: a real phone, the real AI reading a real photo, Nav2 driving the simulated robot, the shelf light switching at 5 m, the live event log with every call and n8n decision. |
 | **Innovation & impact** ("solves a real problem?") | The hook (customers who don't know what they need) and the closing line; the photo understood by the AI; the robot walking the customer to the exact bay. |
 | **Design & user experience** | The phone: "Take a photo of the problem", "Looking at your photo...", "Here's what I see" with the photo, compact item rows where an item and its alternative are one choice, running total against the budget, the green shelf-light card, one big button per screen. |
-| **Demo** (problem, solution, working product) | Real-footage hook with one sourced number → live journey with a picture-in-picture of the real phone → 25 s "how n8n decides" (one opened execution, two zoomed canvas shots) → impact line. |
-| **n8n as the backbone** | The *Live events* list shows the decisions n8n reports for each run (its `trace`: "Relevant to home repair? → yes", "Budget known? → no", "Near or arrived? → near"), each with **Execution N · Open in n8n**; the n8n segment opens that same execution, where n8n paints the path the run took. Say once that n8n falls back from Gemini to Claude by itself. |
+| **Demo** (problem, solution, working product) | Real-footage hook with one sourced number → live journey with a picture-in-picture of the real phone → 25 s "how n8n decides" (one opened execution in n8n's Logs panel, three canvas shots at 100 % zoom) → impact line. |
+| **n8n as the backbone** | *Live events* shows the business decisions n8n reports for each run (its `trace`) as chips, "Relevant to home repair? → yes", "Budget known? → no", "Near or arrived? → near (5 m)", with the run's guard checks folded into one "✓ 12 checks passed" chip, and **Execution N · Open in n8n**; the n8n segment opens that same execution. The off-topic test ("tell me a joke" → `Relevant to home repair? → no`) shows n8n gating the AI. Say once that n8n switches to another AI model by itself when one is busy. |
 
 ## The scenario: a cracked deck board
 
@@ -38,25 +38,33 @@ Pick the **decking board** and the **deck screws**: $18.94, "$31.06 left of your
 ### 0:20-0:35 Scan the QR code
 
 - **Tap** (mouse, on the studio's kiosk): **I'm here, I need help**. The QR code appears (the studio view never prints the link's address).
-- **Phone:** scan it with the camera app, tap the link. The phone frame on screen switches to **Live from the customer's phone** (green label) and the kiosk changes to **Customer connected: Robot ready**, then narrows to make room.
+- **Phone:** scan it with the camera app, tap the link. The phone frame on screen switches to **Live from the customer's phone** (green label); the kiosk column folds away and RViz grows into its place (the kiosk comes back at the end of the visit).
 - **Picture-in-picture (6-8 s, see "Editing" below):** the real phone in a hand as it scans.
 - **Say:** "I scan the kiosk with my own phone. No app to install."
 
-### 0:35-1:05 The photo moment
+### 0:35-0:43 The off-topic test (required, 8 s)
+
+- **Type:** `tell me a joke` → **Send**.
+- **On screen:** after about 3 s the phone answers that it only helps with home repairs and offers the examples again; *Live events* shows `Relevant to home repair? → no` and **Execution N · Open in n8n**.
+- **Say:** "Off-topic? n8n stops it before anything is recommended."
+- It costs one small AI call, and it is the single clearest proof that n8n, not the AI, decides what happens. Do not skip it.
+
+### 0:43-1:05 The photo moment
 
 - **Phone:** tap the big **Take a photo of the problem** button (or **or choose one from your photos**), take or pick the photo of the cracked board. It shows "Photo added".
 - **Type:** `One of the boards on my deck is cracked` → **Send**. (Or the microphone icon → speak → **Stop** → **Send**.)
 - **Picture-in-picture:** the real phone during the photo and the Send tap.
 - **On screen:** a scan line sweeps over the photo, "Looking at your photo...", then the answer lands with its start at the top: the photo, **Here's what I see:** the AI's one sentence about the photo, and the budget question. The amounts **About $25 / About $50 / About $100 / No fixed budget** sit just above the message box, on the phone and on the mirror.
-- **Point at** *Live events*: n8n's own decisions for that run, e.g. `Relevant to home repair? → yes` · `Budget known? → no`, and **Execution N · Open in n8n**.
-- **Say:** "The AI looks at the photo, but n8n decides what happens: is this a home repair? Do we know the budget? No, so it asks before recommending anything. And if Gemini is busy, n8n falls back to Claude by itself."
+- **Point at** *Live events*: n8n's own decisions for that run, `Relevant to home repair? → yes` · `Did AI 2 ask a question or pick items? → picked items` · `Budget known? → no`, the muted "✓ 12 checks passed" chip (hover it for the list), and **Execution N · Open in n8n**.
+- **Say:** "The AI looks at the photo, but n8n decides what happens: is this a home repair? Do we know the budget? No, so it asks before recommending anything. And if one AI model is busy, n8n tries the next one by itself."
+  - Only if a Claude key is set (`./status.sh` then says the backup AI has a Claude key; at the time of writing none is set) may you add "...and falls back to Claude". Without a key, do not mention Claude.
 - **Phone:** tap **About $50**.
 
 ### 1:05-1:30 The item list
 
-- **On screen:** "Seen: …" in one line at the top, **Here's what you need**, then one compact row per item: a department tile, the name, why it was chosen, "Aisle 1 · Bay 5" and a tier ("Budget pick", "Best value", "Pro grade"). The alternative is folded under its item ("1 alternative · $21.98"); tools come last under **Tools for the job**.
+- **On screen:** "Seen: …" in one line at the top, **Here's what you need** and one line under it: "Parts **$18.94**, well inside your $50 budget." Then one compact row per item: a department tile, a short name (**Decking board**, **Exterior deck screws**) with the brand and sizes on the line below, why it was chosen, and "Aisle 1 · Bay 5". A tier badge appears only on an item that differs from the rest (e.g. "Pro grade" on the composite board). The alternative is folded under its item ("1 alternative · $21.98"); the tools are folded into one row, **Tools you might need · 4 · skip any you own** (their total shows only when it is opened).
 - **Phone:** tap the **decking board** row (it shows **1st stop**), then the **deck screws** row (**2nd stop**). The footer shows `$18.94` and "$31.06 left of your $50.00 budget". Tap **Guide me to 2 items**.
-- **Say:** "Only items this store stocks, within my budget, each with its aisle and bay. An item and its alternative are one choice, so I can't end up buying both boards."
+- **Say:** "Only items this store stocks, within my budget, each with its aisle and bay. An item and its alternative are one choice, so I can't end up buying both boards. The tools are optional: most people own a hammer."
 
 ### 1:30-2:15 The robot walks me there
 
@@ -65,22 +73,27 @@ Pick the **decking board** and the **deck screws**: $18.94, "$31.06 left of your
 - **Editing:** zoom in 3 s on the RViz ring and the phone's green card side by side (see below).
 - On arrival: "You've arrived" with a check, **I am done** → tap it (picture-in-picture: the real tap). The robot leaves for aisle 3 (`More items left? → yes`). Tap **I am done** again at aisle 3.
 - **Say:** "The robot guides me. Within five metres the shelf tag lights up, so I see the exact spot. n8n gets every robot event and decides the next step."
+- **Say (the answer to "why a robot, not a map on the phone?"):** "A map gets you to the aisle. The robot walks you to the exact bay and lights the tag, it works for anyone who can't read a store map, and no associate has to leave their post."
 
 ### 2:15-2:35 Wrap-up
 
-- **Phone:** **No, I'm done for today**.
-- **On screen:** "You're all set!": the two items with their prices, "2 items · $18.94 · pay at any register", repair steps for this exact job, and "Search YouTube: …" links for how-to videos. All four steps in the phone's header bar are green. The robot drives back to its dock in RViz; the story strip ends at *Robot home*.
+- **Phone:** **No, show my repair steps** (the orange button).
+- **On screen:** "You're all set!": the two items with their prices, "2 items · $18.94 · pay at any register", repair steps for this exact job, and "Search YouTube: …" links for how-to videos. All four steps in the phone's header bar are green. The kiosk comes back with **Thanks! The robot is heading back to its dock** while the robot drives home in RViz (about 18 s). When it docks, the studio holds **Visit complete** for 30 s (every step of the story strip green, "Visit complete · robot back on its dock"), then resets to the idle kiosk. Say the closing line over that held picture.
 - **Say:** "And I leave with the steps to do the repair myself. The robot goes back to wait for the next customer."
 
-### 2:35-2:55 How n8n decides: one execution, two zoomed shots (20-25 s)
+### 2:35-2:55 How n8n decides: one execution, three shots at 100 % (20-25 s)
 
-Record these three short clips separately, right after the take, and cut them in (see the checklist for the window setup). Node names below are the ones on the canvas at the time of writing: check them against the chips in *Live events* before you record, and use whatever the canvas says.
+Record these short clips separately, right after the take, and cut them in (n8n 2.47 in a full-screen browser window at 1920 x 1080, logged in; see the checklist). At "zoom to fit" the canvas is a map, not something to read, so every canvas shot here is at **100 %**. Node names are the ones on the canvas at the time of writing: check them against the chips in *Live events* before you record.
 
-1. **The opened execution (8-10 s).** In the studio's *Live events*, click **Execution N · Open in n8n** on the entry of the photo request (the one with `Relevant to home repair? → yes`). n8n opens that run: the path it took is painted green and the branches it did not take stay grey. Press `1` (zoom to fit) once, then hover over **Relevant to home repair?** and click it to show its input and output for 2 s; close it.
-   - **Say:** "This is the run you just watched: n8n paints the path it took."
-2. **Zoomed shot A, the AI lane (6 s).** In the workflow editor (not the execution), press `0` (zoom to 100 %), then scroll (vertical) and Shift+scroll (horizontal) until **Relevant to home repair?** is at the left third of the window and **AI 2: understand the need** and **Budget known?** are in view to its right. Node titles must be readable at full size: if they are not, Ctrl+scroll (Mac: Cmd+scroll) with the pointer over **Budget known?** until the titles are about as tall as the browser's address-bar text. Do not move during the clip; let the cursor rest on **Budget known?**.
-   - **Say:** "The first AI only checks relevance. The second reads the photo and picks from this store's catalogue. n8n holds the items until it knows the budget."
-3. **Zoomed shot B, the robot lane (6 s).** Same zoom. Scroll to the robot events: **Near or arrived?** in the middle of the window, with the nodes that switch the shelf tag on and tell the phone to its right. Rest the cursor on **Near or arrived?**.
+1. **The opened execution, in the Logs panel (8-10 s).** In the studio's *Live events*, click **Execution N · Open in n8n** on the entry of the photo request (the one with `Relevant to home repair? → yes`). n8n opens that run on its **Executions** tab, the canvas at zoom to fit with the path the run took painted green.
+   - Click **Logs** in the bar along the bottom of the canvas. The panel opens in the lower third: on its left, every node the run went through, in order, at a readable size. It opens scrolled to the end (**Repair steps to write?**).
+   - With the pointer over that list, scroll **up** (about 10 wheel notches) until **Relevant to home repair?** shows, between **Did AI 1 answer?** and **Read the item catalogue**, and click it. The right side shows **Relevant to home repair? · Success in 1ms**, **OUTPUT** with the tab **True Branch (1 item)** selected, and the run's data: `provider: gemini`, the model that answered, `duration_ms`, `relevant: true`. Hold 3 s with the pointer resting on **True Branch (1 item)**.
+   - **Say:** "This is the run you just watched. n8n logs every node it went through: here it decided that the photo is a home repair, and it shows which AI model answered and how fast."
+2. **Shot A, the first half of the AI lane (5 s).** Switch to the **Editor** tab. If the Logs panel is open there too, close it (the chevron at its top right). Click an empty spot of the canvas and press `0` (zoom to 100 %). Scroll (Shift+scroll sideways, or swipe with two fingers) until **Write the relevancy prompt** is at the left edge of the window, with the row **AI 1: relevancy check → Did AI 1 answer? → Relevant to home repair? → Read the item catalogue → Write the main prompt → AI 2: understand the need → Did AI 2 answer?** across the middle and **Say sorry** above **Read the item catalogue** (the view's top-left at about canvas (2600, −350)). Rest the pointer on **Relevant to home repair?**.
+   - **Say:** "The first AI only checks relevance; anything off-topic goes to 'Say sorry'. The second reads the photo and picks from this store's catalogue."
+3. **Shot B, the second half of the AI lane (5 s).** Same zoom. Scroll right until **Did AI 2 ask a question or pick items?** is at the left, with **Budget known? → Main items within the budget? → Room for the tools too?** across the middle and **Ask the follow-up question / Show the item list / Ask for the budget** on the right (top-left about (4450, −350)). Rest the pointer on **Budget known?**.
+   - **Say:** "n8n holds the items until it knows the budget, then checks the parts against it."
+4. **Shot C, the robot lane (6 s).** Same zoom. Scroll down into the green lane **4 Robot events**: **Read the robot event → Is this event for the item being fetched? → Near or arrived? → Phone still guiding to it?**, with **Turn the shelf light on** and **Show 'You have arrived'** on the right (top-left about (4790, 620)). Rest the pointer on **Near or arrived?**.
    - **Say:** "Every robot event comes back here. Near: light the shelf tag. Arrived: show 'I am done'. n8n is the brain; the AI and the robot are tools it calls."
 
 If your recorder adds a cursor highlight (OBS: a cursor-highlight plugin; macOS: *Show mouse clicks* in Shift+Cmd+5 Options), turn it on for these clips.
@@ -89,7 +102,6 @@ If your recorder adds a cursor highlight (OBS: a cursor-highlight plugin; macOS:
 
 - **Say:** "Aisle Guide turns 'I don't know what I need' into a short walk to the right shelf, with the right parts, within budget, and the repair steps in your pocket."
 
-Optional if you have time (8-15 s, before the photo moment): type `tell me a joke` first. The phone says sorry and offers the examples again; *Live events* shows `Relevant to home repair? → no`. It is the clearest example of n8n gating the AI.
 
 ## Editing
 
