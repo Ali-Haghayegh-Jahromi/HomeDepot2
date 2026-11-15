@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
-"""A stand-in for the Gemini API, for testing the workflow without an API key
-(and as an offline fallback). It answers the workflow's three AI calls with
-simple keyword rules; it understands nothing. A few words in the customer's text trigger
-test behaviour (tools/edge_case_test.py): "test-slow" (8 s answer), "test-ai1-fails" (relevancy
-call answers HTTP 503), "test-ai2-garbage" (no JSON), "test-markdown" (options inside the question).
+"""A stand-in for the Gemini API and for Anthropic's Messages API (Claude), for testing the workflow without
+API keys (and as an offline fallback). It answers the workflow's three AI calls with simple keyword rules; it
+understands nothing. Gemini calls: POST /v1beta/models/<model>:generateContent. Claude calls: POST /v1/messages
+(needs any x-api-key; "stream": true is answered as server-sent events, like the real API).
+
+A few words in the customer's text trigger test behaviour (tools/edge_case_test.py):
+  test-slow         8 s answer                     test-ai1-fails     relevancy call: HTTP 503 (every model)
+  test-ai2-garbage  no JSON                        test-markdown      options inside the question
+  test-quota-first  the first model of the chain (gemini-flash-lite-latest) answers 429 (per-minute rate)
+  test-gemini-quota every Gemini model answers 429 (daily free quota used up)
+  test-gemini-busy  every Gemini model answers 503 (overloaded)
+  test-claude-down  Claude answers 529 (overloaded)
 
     python3 n8n/test/fake_gemini.py          (port 8010)
     HD_GEMINI_URL=http://localhost:8010 python3 n8n/build_workflow.py   then ./n8n/setup.sh
 """
+import base64
 import json
 import os
 import re
@@ -16,6 +24,80 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class Unavailable(Exception):
     """Answer like an overloaded Gemini (HTTP 503)."""
+
+
+class ApiError(Exception):
+    """Answer with this HTTP status and JSON body."""
+
+    def __init__(self, status, body):
+        super().__init__(status)
+        self.status, self.body = status, body
+
+
+FIRST_MODEL = 'gemini-flash-lite-latest'
+
+
+def gemini_quota(model, daily):
+    quota = 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' if daily else 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier'
+    return ApiError(429, {'error': {'code': 429, 'status': 'RESOURCE_EXHAUSTED', 'message':
+        'You exceeded your current quota, please check your plan and billing details. * Quota exceeded for metric: '
+        f'generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: {model}. '
+        'Please retry in 21.5s. (stand-in test)', 'details': [
+            {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaId': quota}]},
+            {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '21s'}]}})
+
+
+def failures(body, model, provider):
+    """The test hooks that make a provider fail (only words in the customer's message, or in the job text for AI 3)."""
+    words = hook_text(body)
+    if provider == 'gemini':
+        if 'test-gemini-quota' in words:
+            raise gemini_quota(model, daily=True)
+        if 'test-quota-first' in words and model == FIRST_MODEL:
+            raise gemini_quota(model, daily=False)
+        if 'test-gemini-busy' in words:
+            raise ApiError(503, {'error': {'code': 503, 'status': 'UNAVAILABLE',
+                                           'message': 'This model is currently experiencing high demand. (stand-in test)'}})
+    if provider == 'claude' and 'test-claude-down' in words:
+        raise ApiError(529, {'type': 'error', 'error': {'type': 'overloaded_error', 'message': 'Overloaded (stand-in test)'}})
+
+
+def hook_text(body):
+    text = ' '.join(p.get('text', '') for c in body.get('contents', []) for p in c.get('parts', []))
+    # a "voice recording" for the tests is just base64 text: test words in it count as said
+    for p in (p for c in body.get('contents', []) for p in c.get('parts', [])):
+        if str((p.get('inlineData') or {}).get('mimeType', '')).startswith('audio/'):
+            try:
+                said = base64.b64decode(p['inlineData']['data']).decode('utf-8', 'ignore').lower()
+            except (ValueError, KeyError):
+                said = ''
+            if said.startswith('test-'):
+                return said
+    if 'CUSTOMER MESSAGE' in text:          # AI 1 and AI 2: only the new message
+        return section(text, 'NEW CUSTOMER MESSAGE' if 'NEW CUSTOMER MESSAGE' in text else 'CUSTOMER MESSAGE').lower()
+    return text.lower()                      # AI 3: the job and what the customer said
+
+
+def from_anthropic(body):
+    """An Anthropic Messages request in the shape reply_for reads (Gemini's)."""
+    system = body.get('system') or ''
+    if isinstance(system, list):
+        system = ' '.join(b.get('text', '') for b in system if isinstance(b, dict))
+    parts = []
+    for m in body.get('messages', []):
+        content = m.get('content')
+        if isinstance(content, str):
+            if m.get('role') == 'system':
+                system += ' ' + content
+            else:
+                parts.append({'text': content})
+            continue
+        for block in content or []:
+            if block.get('type') == 'text':
+                parts.append({'text': block.get('text', '')})
+            elif block.get('type') == 'image':
+                parts.append({'inlineData': {'mimeType': block['source'].get('media_type'), 'data': '(image)'}})
+    return {'systemInstruction': {'parts': [{'text': system}]}, 'contents': [{'role': 'user', 'parts': parts}]}
 
 
 OFF_TOPIC = ('pizza', 'joke', 'poem', 'weather', 'homework', 'president', 'ignore your instructions')
@@ -75,46 +157,97 @@ def reply_for(body):
     talk = ((so_far if 'is continuing the request' in text else '') + ' ' + new).lower()
     job = next((j for j in JOBS if any(word in talk for word in j[0])), None)
     title = job[1] if job else 'Home repair'
-    understood = ('The customer sent a photo or recording about: ' if has_media else 'The customer said: ') + new.split('\n')[0][:80]
+    said = new.split('\n')[0].strip('. ')[:80]
+    understood = (f'I can see what looks like this job: {title.lower()}.' if job else 'I can see a photo, but not what needs fixing.') \
+        if has_media else f'You said: {said}.'
+
     money = re.search(r'\$\s?(\d+)', talk) or re.search(r'(\d+)\s?(dollars|bucks)', talk)
     known = re.search(r'Budget for this job: \$(\d+(\.\d+)?)', text)
     budget = float(known.group(1)) if known else float(money.group(1)) if money else None
     if not job:
         return {'type': 'question', 'understood': understood, 'request_title': title, 'budget': budget,
-                'question': 'What would you like to fix or build?', 'options': ['A deck board', 'A running toilet', 'A hole in a wall']}
+                'question': 'What would you like to fix or build?', 'options': ['A deck board', 'A running toilet', 'A hole in a wall'],
+                'items': []}
     if budget is None:
         return {'type': 'question', 'understood': understood, 'request_title': title, 'budget': None,
-                'question': 'Roughly what is your budget for this job?', 'options': ['Under $30', 'About $60', '$150 or more']}
+                'question': 'Roughly what is your budget for this job?', 'options': ['Under $30', 'About $60', '$150 or more'],
+                'items': []}
     catalogue = [line.split(' | ') for line in section(text, 'CATALOGUE', 'CONVERSATION SO FAR').split('\n') if line.count(' | ') >= 7]
     tiers = ['good', 'better', 'best'] if budget < 60 else ['better', 'good', 'best'] if budget < 150 else ['best', 'better', 'good']
     items = []
     for kind in job[2]:
         matches = sorted((row for row in catalogue if row[4] == kind), key=lambda row: tiers.index(row[3]))
         for n, row in enumerate(matches[:2 if kind == job[2][0] else 1]):
-            items.append({'sku': row[0], 'reason': f'{"Best fit" if n == 0 else "Alternative"} for your {title.lower()}: {row[3]} quality {kind}.'})
-    return {'type': 'items', 'understood': understood, 'request_title': title, 'budget': budget, 'items': items}
+            role = 'tool' if 'tool' in row[5].lower() else 'alternative' if n else 'main'
+            items.append({'sku': row[0], 'role': role,
+                          'reason': f'{"Best fit" if n == 0 else "Alternative"} for your {title.lower()}: {row[3]} quality {kind}.'})
+    return {'type': 'items', 'understood': understood, 'request_title': title, 'budget': budget, 'question': '', 'options': [],
+            'items': items}
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        path = self.path.split('?')[0]
         if os.environ.get('HD_FAKE_AI_DUMP'):      # debugging: append every request to this file
             with open(os.environ['HD_FAKE_AI_DUMP'], 'a') as f:
-                f.write(json.dumps({'path': self.path.split('?')[0], 'body': body}) + '\n')
+                f.write(json.dumps({'path': path, 'body': body}) + '\n')
+        if path.endswith('/v1/messages'):
+            return self.anthropic(body)
+        model = path.rsplit('/', 1)[-1].split(':')[0]
         try:
+            failures(body, model, 'gemini')
             answer = reply_for(body)
         except Unavailable:
-            data = b'{"error": {"code": 503, "message": "The model is overloaded (stand-in test)", "status": "UNAVAILABLE"}}'
-            self.send_response(503)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-            return
-        print(self.path.split('?')[0].split('/')[-1], '->', json.dumps(answer)[:150], flush=True)
+            return self.send_json(503, {'error': {'code': 503, 'message': 'The model is overloaded (stand-in test)', 'status': 'UNAVAILABLE'}})
+        except ApiError as error:
+            return self.send_json(error.status, error.body)
+        print(model, '->', json.dumps(answer)[:150], flush=True)
         text = answer if isinstance(answer, str) else json.dumps(answer)
-        data = json.dumps({'candidates': [{'content': {'role': 'model', 'parts': [{'text': text}]}}]}).encode()
+        self.send_json(200, {'candidates': [{'content': {'role': 'model', 'parts': [{'text': text}]}, 'finishReason': 'STOP'}],
+                             'usageMetadata': {'promptTokenCount': 100, 'candidatesTokenCount': 20}})
+
+    def anthropic(self, body):
+        """Anthropic's Messages API: same rules, Claude's answer shape (and its error shape)."""
+        model = body.get('model', 'claude')
+        if not (self.headers.get('x-api-key') or '').strip():
+            return self.send_json(401, {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}})
+        if not body.get('max_tokens') or not body.get('messages'):
+            return self.send_json(400, {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'max_tokens and messages are required'}})
+        converted = from_anthropic(body)
+        try:
+            failures(converted, model, 'claude')
+            answer = reply_for(converted)
+        except (Unavailable, ApiError):
+            return self.send_json(529, {'type': 'error', 'error': {'type': 'overloaded_error', 'message': 'Overloaded (stand-in test)'}})
+        text = answer if isinstance(answer, str) else json.dumps(answer)
+        print('claude', model, '->', text[:150], flush=True)
+        message = {'id': 'msg_standin', 'type': 'message', 'role': 'assistant', 'model': model,
+                   'content': [{'type': 'text', 'text': text}], 'stop_reason': 'end_turn', 'stop_sequence': None,
+                   'usage': {'input_tokens': 100, 'output_tokens': 20}}
+        if not body.get('stream'):
+            return self.send_json(200, message)
+        events = [('message_start', {'type': 'message_start', 'message': {**message, 'content': [], 'stop_reason': None,
+                                                                           'usage': {'input_tokens': 100, 'output_tokens': 1}}}),
+                  ('content_block_start', {'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': ''}}),
+                  ('content_block_delta', {'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': text}}),
+                  ('content_block_stop', {'type': 'content_block_stop', 'index': 0}),
+                  ('message_delta', {'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
+                                     'usage': {'output_tokens': 20}}),
+                  ('message_stop', {'type': 'message_stop'})]
+        data = ''.join(f'event: {name}\ndata: {json.dumps(payload)}\n\n' for name, payload in events).encode()
         self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):          # the key checks of ./start.sh (models list)
+        self.send_json(200, {'data': [], 'models': []})
+
+    def send_json(self, status, payload):
+        data = json.dumps(payload).encode()
+        self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
@@ -125,5 +258,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    print('Fake Gemini on http://localhost:8010 (keyword rules, no AI)', flush=True)
+    print('Stand-in AI (Gemini + Claude formats) on http://localhost:8010 (keyword rules, no AI)', flush=True)
     ThreadingHTTPServer((os.environ.get('HD_FAKE_AI_HOST', '127.0.0.1'), 8010), Handler).serve_forever()

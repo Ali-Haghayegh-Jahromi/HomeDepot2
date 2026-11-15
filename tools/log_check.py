@@ -155,10 +155,17 @@ def describe(e):
         return text
     if ev == 'session_start':
         return 'new visit' + (f', closed {d["closed_visits"]}' if d.get('closed_visits') else '')
+    if ev == 'ai_skip':
+        return f'{(d.get("node") or "").split(":")[0]} {d.get("model")} skipped: ' + \
+            {'no_claude_key': 'no Claude key', 'voice_note': 'Claude cannot hear a voice note'}.get(d.get('reason'), str(d.get('reason')))
     if ev == 'ai_call':
         node = (d.get('node') or '').split(':')[0]
         text = f'{node} {d.get("model")}{ms} ' + (f'try {d["attempt"]} ' if (d.get('attempt') or 1) > 1 else '') + \
             ('ok' if d.get('ok') else 'FAILED') + (' (garbled question)' if d.get('garbled_question') else '')
+        if d.get('failure'):
+            text += f' [{d["failure"]}' + (f', rests {d["rest_s"]} s' if d.get('rest_s') else '') + ']'
+        if d.get('skipped_resting'):
+            text += f' (skipped resting: {", ".join(d["skipped_resting"])})'
         if d.get('http_error'):
             text += f' http_error={brief(d["http_error"], 80)}'
         if d.get('missing_fields'):
@@ -452,9 +459,11 @@ def run_checks(entries, sessions, scope, now):
                     p.add('ai_options_in_question_text', s, 'AI 2 put choices / markdown inside the question text while '
                           f'"options" is empty: {brief(q, 200)}', [e])
             budget = d.get('budget_known') or d.get('budget_stated_now')
-            if d.get('shown') == 'items' and budget and (d.get('items_total') or 0) > float(budget) * 1.1:
-                p.add('items_over_budget', s, f'AI 2\'s list costs ${d["items_total"]} in total for a ${budget} budget '
-                      '(the list may include alternatives and tools the customer can untick)', [e], 'warn')
+            # the budget counts the first-choice ("main") items and the tools, not the alternatives
+            counted = d.get('items_total_budgeted', d.get('items_total')) or 0
+            if d.get('shown') == 'items' and budget and counted > float(budget) * 1.1:
+                p.add('items_over_budget', s, f'AI 2\'s main items and tools cost ${counted} for a ${budget} budget'
+                      + (f' (the whole list with alternatives: ${d["items_total"]})' if d.get('items_total') != counted else ''), [e], 'warn')
             if d.get('budget_rule_applied'):
                 p.add('ai_skipped_budget', s, 'AI 2 recommended items without knowing the budget; the workflow asked for '
                       'the budget instead (the brief\'s rule)', [e], 'warn')
@@ -464,6 +473,13 @@ def run_checks(entries, sessions, scope, now):
             if 'steps_raw' in d and (not d.get('steps_raw') or d['steps_raw'] > MAX_STEPS):
                 p.add('repair_steps_bad', s, f'AI 3 gave {d.get("steps_raw")} repair steps (expected 1 to {MAX_STEPS}; '
                       f'{d.get("steps_kept")} kept)', [e])
+        for e in by(n8n, event='ai_failed_reply'):
+            d = e['details']
+            p.add('ai_gave_up', s, f'{d.get("node")}: no model answered in time, the customer got '
+                  + ('"please type it" (a voice note, and Claude cannot listen)' if d.get('shown') == 'voice_needs_text_message'
+                     else '"please send it again"')
+                  + (f'; tried {", ".join(d["models_tried"])}' if d.get('models_tried') else '')
+                  + (f'; now resting: {", ".join(d["rested"])}' if d.get('rested') else ''), [e])
         for e in by(n8n, event='items_chosen'):
             left_out = (e['details'].get('not_found') or []) + (e['details'].get('not_on_list') or [])
             if left_out:
