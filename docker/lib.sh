@@ -90,6 +90,7 @@ hd_make_env() {   # creates .env from the template, or adds what an older .env i
   env_default POSTGRES_DB homedepot
   env_default HD_LLM_READER_PASSWORD "$(random_text 24)"
   env_default TZ "$(detect_tz)"
+  grep -q '^ANTHROPIC_API_KEY=' "$ENV_FILE" || env_set ANTHROPIC_API_KEY ''
   hd_load_env
 }
 
@@ -241,20 +242,28 @@ n8n_owner() {   # creates the n8n owner account on a new n8n; sets N8N_LOGIN_OK 
 }
 
 gemini_key_state() {   # what n8n has saved as the Gemini key: real | placeholder | missing (never prints the key)
+  key_state hdGeminiApiKey001
+}
+
+claude_key_state() {   # the same for the optional Anthropic (Claude) key
+  key_state hdAnthropicKey001
+}
+
+key_state() {   # key_state CREDENTIAL_ID
   # n8n answers its health check a moment before its CLI works: ask again until the answer is clear
   for _ in 1 2 3 4 5 6; do
-    state=$(gemini_key_state_once)
+    state=$(key_state_once "$1")
     case "$state" in real|placeholder|missing) printf '%s\n' "$state"; return 0 ;; esac
     sleep 2
   done
   printf 'unknown\n'
 }
 
-gemini_key_state_once() {
-  dc exec -T n8n sh -c '
-    n8n export:credentials --id=hdGeminiApiKey001 --decrypted --output=/tmp/hd_c.json >/dev/null 2>&1
-    if [ ! -s /tmp/hd_c.json ] || ! grep -q hdGeminiApiKey001 /tmp/hd_c.json; then echo missing
-    elif grep -q PASTE-YOUR /tmp/hd_c.json; then echo placeholder
+key_state_once() {   # the key itself never leaves the container: only real / placeholder / missing is printed
+  dc exec -T -e HD_CRED="$1" n8n sh -c '
+    n8n export:credentials --id="$HD_CRED" --decrypted --output=/tmp/hd_c.json >/dev/null 2>&1
+    if [ ! -s /tmp/hd_c.json ] || ! grep -q "$HD_CRED" /tmp/hd_c.json; then echo missing
+    elif grep -q PASTE-YOUR /tmp/hd_c.json || grep -Eq "\"apiKey\": *\"\"" /tmp/hd_c.json; then echo placeholder
     else echo real; fi
     rm -f /tmp/hd_c.json' 2>/dev/null | tail -n 1
 }
@@ -300,15 +309,60 @@ ask_gemini_key() {   # asks for the key (hidden); sets GEMINI_INPUT ('' = skip)
   say "  Skipping the key for now: the stand-in AI is used. Change it any time with ./start.sh key"
 }
 
+ask_claude_key() {   # asks for the optional Anthropic key (hidden); sets CLAUDE_INPUT ('' = skip)
+  CLAUDE_INPUT=
+  say ""
+  say "${B}Optional: Claude (Anthropic) as a backup AI.${N} If Google's free Gemini quota runs out or Gemini is"
+  say "busy, the demo can switch to Claude instead of asking the customer to try again. It needs an Anthropic"
+  say "API key (paid per use; a demo costs cents):"
+  say "  1. Open https://console.anthropic.com/settings/keys, sign in, press 'Create Key' and copy it."
+  say "  2. Paste it below and press Enter (you will not see it while you paste)."
+  say "Or just press Enter to skip (Gemini only). Add it any time later with ./start.sh claude-key"
+  tries=0
+  while [ $tries -lt 3 ]; do
+    tries=$((tries + 1))
+    printf 'Anthropic API key (Enter = skip): '
+    trap 'stty echo 2>/dev/null; echo; exit 130' INT
+    stty -echo 2>/dev/null
+    IFS= read -r input
+    stty echo 2>/dev/null
+    trap - INT
+    echo
+    input=$(printf '%s' "$input" | tr -d '[:space:]')
+    [ -z "$input" ] && return 0
+    if ! printf '%s' "$input" | grep -Eq '^sk-ant-[A-Za-z0-9_-]{20,}$'; then
+      say "  That does not look like an Anthropic API key (it starts with sk-ant-). Try again, or press Enter to skip."
+      continue
+    fi
+    if [ -z "${HD_SKIP_KEY_CHECK:-}" ]; then
+      code=$(printf 'x-api-key: %s\nanthropic-version: 2023-06-01\n' "$input" | curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H @- \
+        https://api.anthropic.com/v1/models 2>/dev/null)
+      case "$code" in
+        200) say "  Key checked with Anthropic: it works." ;;
+        000) say "  (Could not reach Anthropic to check the key: no internet? Keeping it.)" ;;
+        *)   say "  Anthropic did not accept this key (HTTP $code). Check it and try again, or press Enter to skip."
+             continue ;;
+      esac
+    fi
+    CLAUDE_INPUT=$input
+    return 0
+  done
+  say "  Skipping the Claude key for now. Add it any time with ./start.sh claude-key"
+}
+
 n8n_setup() {   # credentials + workflow into n8n, switched on; only when something changed (or FORCE=yes)
   key=$(env_get GEMINI_API_KEY)
+  claude_key=$(env_get ANTHROPIC_API_KEY)
   if [ "$AI" = offline ]; then gemini_url=http://fake-ai:8010; else gemini_url=https://generativelanguage.googleapis.com; fi
+  # is a Claude key saved (in .env, or earlier in n8n)? The workflow's "Claude key set?" nodes read this.
+  if [ -n "$claude_key" ] || [ "$(claude_key_state)" = real ]; then claude_set=yes; else claude_set=no; fi
+  provider=$(env_get HD_AI_PROVIDER); gemini_models=$(env_get HD_GEMINI_MODELS)
   phone_link="$(phone_base)/demo/phone.html?s="
   pg_user=$(env_get POSTGRES_USER); pg_pw=$(env_get POSTGRES_PASSWORD); pg_db=$(env_get POSTGRES_DB)
   reader_pw=$(env_get HD_LLM_READER_PASSWORD)
-  secrets_sum=$(printf '%s|%s|%s|%s|%s' "$pg_user" "$pg_pw" "$pg_db" "$reader_pw" "$key" | cksum | awk '{print $1}')
+  secrets_sum=$(printf '%s|%s|%s|%s|%s|%s' "$pg_user" "$pg_pw" "$pg_db" "$reader_pw" "$key" "$claude_key" | cksum | awk '{print $1}')
   wf_sum=$(cksum < "$ROOT/n8n/build_workflow.py" | awk '{print $1}')
-  fingerprint="v1|$wf_sum|$secrets_sum|$AI|$gemini_url|$phone_link"
+  fingerprint="v2|$wf_sum|$secrets_sum|$AI|$gemini_url|$phone_link|$claude_set|$provider|$gemini_models"
   saved=$(dc exec -T n8n cat /home/node/.n8n/hd_setup_fingerprint 2>/dev/null)
   if [ "${FORCE:-no}" != yes ] && [ "$saved" = "$fingerprint" ]; then
     good "n8n workflow is up to date"
@@ -316,6 +370,13 @@ n8n_setup() {   # credentials + workflow into n8n, switched on; only when someth
   fi
 
   printf '  importing the workflow and its credentials into n8n '
+  # 0. the model chain's memory (table ai_model_status; safe to run again). A changed setup starts with no model
+  #    marked broken (wrong name) or locked out (wrong key); quota and busy rests are kept.
+  { cat "$ROOT/database/init/07_ai_model_status.sql"
+    echo "DELETE FROM ai_model_status WHERE reason IN ('model', 'key');"; } \
+    | dc exec -T postgres sh -c 'psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1 \
+    || { echo; bad "could not create the AI model table in the database"; return 1; }
+  printf '.'
   # 1. credentials: the database ones from .env; the Gemini key from .env, else keep the saved one
   pg() { printf '{"id":"%s","name":"%s","type":"postgres","data":{"host":"postgres","port":5432,"database":"%s","user":"%s","password":"%s","ssl":"disable"}}' \
            "$1" "$2" "$(json_escape "$pg_db")" "$(json_escape "$3")" "$(json_escape "$4")"; }
@@ -331,6 +392,15 @@ n8n_setup() {   # credentials + workflow into n8n, switched on; only when someth
   fi
   # the stand-in AI's credential (dummy key): n8n's native Gemini chat node uses it in offline mode
   creds="$creds,{\"id\":\"hdGeminiStandIn01\",\"name\":\"HD Gemini stand-in (no key)\",\"type\":\"googlePalmApi\",\"data\":{\"host\":\"http://fake-ai:8010\",\"apiKey\":\"stand-in-no-key\"}}"
+  # Claude (optional): the key from .env, else keep the one saved in n8n, else an empty credential to fill in
+  claude_cred=
+  if [ -n "$claude_key" ]; then claude_cred=$claude_key
+  elif [ "$(claude_key_state)" = missing ]; then claude_cred=' '; fi
+  if [ -n "$claude_cred" ]; then
+    claude_cred=$(printf '%s' "$claude_cred" | tr -d '[:space:]')
+    creds="$creds,{\"id\":\"hdAnthropicKey001\",\"name\":\"HD Anthropic API key (optional)\",\"type\":\"anthropicApi\",\"data\":{\"apiKey\":\"$(json_escape "$claude_cred")\",\"url\":\"https://api.anthropic.com\"}}"
+  fi
+  creds="$creds,{\"id\":\"hdClaudeStandIn01\",\"name\":\"HD Claude stand-in (no key)\",\"type\":\"anthropicApi\",\"data\":{\"apiKey\":\"stand-in-no-key\",\"url\":\"http://fake-ai:8010\"}}"
   creds="$creds]"
   printf '%s' "$creds" | dc exec -T n8n sh -c 'umask 077; cat > /tmp/hd_credentials.json' || return 1
   printf '.'
@@ -344,6 +414,7 @@ n8n_setup() {   # credentials + workflow into n8n, switched on; only when someth
   errors=$(mktemp "${TMPDIR:-/tmp}/hd_build.XXXXXX")
   docker run --rm --network none -v "$ROOT/n8n:/src:ro" \
       -e HD_ROBOT_URL=http://robot:8000 -e HD_PHONE_LINK="$phone_link" -e HD_GEMINI_URL="$gemini_url" \
+      -e HD_CLAUDE_KEY_SET="$claude_set" -e HD_AI_PROVIDER="$provider" -e HD_GEMINI_MODELS="$gemini_models" \
       -e HD_WORKFLOW_FILE=/tmp/workflow.json --entrypoint /bin/sh "$IMAGE" \
       -c 'python3 /src/build_workflow.py >/dev/null && cat /tmp/workflow.json' 2>"$errors" \
     | dc exec -T n8n sh -c 'cat > /tmp/hd_workflow.json'
@@ -365,7 +436,8 @@ EOF
   dc restart n8n >/dev/null 2>&1
   wait_http "http://localhost:$N8N_PORT/healthz" 120 || { echo; bad "n8n did not come back after the restart"; return 1; }
   echo
-  good "workflow imported and switched on (AI: $AI; phone link: ${phone_link}...)"
+  if [ "$claude_set" = yes ]; then claude_note="Claude fallback on"; else claude_note="no Claude key"; fi
+  good "workflow imported and switched on (AI: $AI, ${claude_note}; phone link: ${phone_link}...)"
 }
 
 open_browser() {
@@ -409,6 +481,12 @@ hd_status() {   # plain-language health of each part, with the fix; returns 1 if
         *) bad "AI: no Gemini API key is saved, so the AI steps will fail"; fix "Fix: ./start.sh key"; problems=1 ;;
       esac
     fi
+    case "$(claude_key_state)" in
+      real) good "Backup AI: Claude (an Anthropic key is saved)$( [ "$(env_get HD_AI_PROVIDER)" = claude ] && echo '; Claude goes first (HD_AI_PROVIDER=claude)')" ;;
+      *) note "Backup AI: no Claude key (optional): when every Gemini model is out of quota, customers are asked to try again"
+         fix "Add one any time: ./start.sh claude-key" ;;
+    esac
+    ai_models_status
   elif [ -n "$(state_of n8n)" ]; then
     note "n8n is starting"; fix "Wait half a minute and check again: ./status.sh"
   else
@@ -453,6 +531,22 @@ hd_status() {   # plain-language health of each part, with the fix; returns 1 if
     firewall_check
   fi
   return $problems
+}
+
+ai_models_status() {   # the model chain's memory: which AI models rest right now (out of quota / busy), and why
+  rows=$(printf '%s\n' "SELECT model, reason, to_char(resting_until, 'HH24:MI'), coalesce(http_code, '')
+    FROM ai_model_status WHERE resting_until > now() ORDER BY resting_until;" \
+    | dc exec -T postgres sh -c 'psql -At -F "|" -U "$POSTGRES_USER" -d "$POSTGRES_DB"' 2>/dev/null)
+  if [ -z "$rows" ]; then good "AI models: none is resting (no recent 'out of quota' or 'busy')"; return 0; fi
+  note "AI models resting (skipped until the time shown; the next model of the chain answers instead):"
+  printf '%s\n' "$rows" | while IFS='|' read -r m why until code; do
+    case "$why" in
+      quota_day) what="daily free quota used up" ;; quota) what="too many requests per minute" ;;
+      busy) what="overloaded (busy)" ;; timeout) what="too slow" ;; model) what="model name not accepted" ;;
+      key) what="API key refused" ;; *) what=$why ;;
+    esac
+    fix "$m: $what${code:+ (HTTP $code)}, until $until"
+  done
 }
 
 # ------------------------------------------------------------------ firewall (LAN mode)

@@ -2,6 +2,7 @@
 # Starts the whole Aisle Guide demo (needs only Docker) and opens it in the browser.
 #   ./start.sh               start (the first time also sets everything up: 10-20 minutes)
 #   ./start.sh key           enter or change the Gemini API key (or switch to the stand-in AI)
+#   ./start.sh claude-key    add or change the optional Anthropic key (Claude, the backup AI when Gemini is out of quota)
 #   ./start.sh setup         put the workflow into n8n again (after changing n8n/build_workflow.py)
 #   ./start.sh status        is everything running? (same as ./status.sh)
 #   ./start.sh lan           let phones on the same Wi-Fi open the demo (QR code with this computer's address)
@@ -16,15 +17,16 @@ ROOT=$HERE; [ -f "$ROOT/docker/compose.yaml" ] || ROOT=$(dirname "$HERE")
 hd_init "$ROOT"
 cd "$ROOT" || exit 1
 
-BROWSER=yes; ASK_KEY=no; FORCE=no; NETWORK=
+BROWSER=yes; ASK_KEY=no; ASK_CLAUDE=no; FORCE=no; NETWORK=
 for arg in "$@"; do
   case "$arg" in
     status) hd_check_docker; hd_status; exit $? ;;
     key) ASK_KEY=yes ;;
+    claude-key) ASK_CLAUDE=yes ;;
     setup) FORCE=yes ;;
     lan|https|local) NETWORK=$arg ;;
     --no-browser) BROWSER=no ;;
-    -h|--help|help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help|help) sed -n '2,13p' "$0"; exit 0 ;;
     *) die "Unknown option: $arg (try ./start.sh --help)" ;;
   esac
 done
@@ -71,6 +73,16 @@ if [ "$ASK_KEY" = yes ] || [ -z "$AI" ]; then
   hd_load_env
 fi
 [ "$AI" = gemini ] && good "AI: Google Gemini" || { [ "$AI" = offline ] && good "AI: stand-in (offline mode)"; }
+# Claude, the optional backup AI: asked once (and again with ./start.sh claude-key). Enter = skip / keep as it is.
+if [ -t 0 ] && { [ "$ASK_CLAUDE" = yes ] || { [ "$AI" != offline ] && [ -z "$(env_get ANTHROPIC_API_KEY)" ] \
+                                               && [ "$(env_get HD_CLAUDE_ASKED)" != yes ]; }; }; then
+  ask_claude_key
+  if [ -n "$CLAUDE_INPUT" ]; then env_set ANTHROPIC_API_KEY "$CLAUDE_INPUT"
+  elif [ "$ASK_CLAUDE" = yes ]; then say "  No change."; fi
+  env_set HD_CLAUDE_ASKED yes
+  CLAUDE_INPUT=
+fi
+[ -n "$(env_get ANTHROPIC_API_KEY)" ] && good "Backup AI: Claude (Anthropic key in .env)"
 
 step "3/6  Getting the programs (the first time downloads about 2 GB and builds the robot: 10-20 minutes)"
 for image in $(dc config --images postgres n8n 2>/dev/null); do
@@ -155,7 +167,9 @@ if [ "$LAN" = yes ]; then
   fi
   firewall_check
 fi
-if [ "$AI" = offline ]; then say "  AI: the stand-in (no key). For the real AI: ./start.sh key"; else say "  AI: Google Gemini"; fi
+if [ "$AI" = offline ]; then say "  AI: the stand-in (no key). For the real AI: ./start.sh key"
+elif [ "${claude_set:-no}" = yes ]; then say "  AI: Google Gemini, with Claude as the backup"
+else say "  AI: Google Gemini (optional backup AI Claude: ./start.sh claude-key)"; fi
 say "Stop it with ./stop.sh (or double-click 'Stop Demo.command' on a Mac). Problems? ./status.sh"
 [ "$BROWSER" = yes ] && open_browser "$STAGE"
 exit 0
