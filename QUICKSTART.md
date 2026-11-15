@@ -75,7 +75,7 @@ You may close that window; the demo keeps running.
 ## 4. Give the demo
 
 1. On the kiosk press **I'm here, I need help**. The QR code appears and the phone opens.
-2. On the phone, first type something unrelated ("tell me a joke") to show that the AI refuses it. Then a real problem: "one of the boards on my deck is cracked", best with a photo (the camera or the picture buttons under the text box): the phone shows what the AI sees in it. A sample photo is in the demo folder: `samples/deck_board.jpg`; for a recording, a photo of your own of a real broken item looks better.
+2. On the phone, first type something unrelated ("tell me a joke") to show that the AI refuses it. Then a real problem: "one of the boards on my deck is cracked", best with a photo (the big **Take a photo of the problem** button, or the camera and picture buttons under the text box): the phone shows what the AI sees in it. A sample photo is in the demo folder, `samples/deck_board.jpg`: it is a placeholder for testing only (a deck with some new boards, no visible damage). **Before recording, photograph a real cracked or split deck board (or another real broken item), and do one dry run with that photo and no text** to check that "Here's what I see" names the damage.
 3. Answer the follow-up questions. Tap **Add** on the items you want, in the order you want to collect them, and press **Guide me**. (If the AI is busy for a moment, the message shows **Try again**: one tap sends it again, photo included.)
 4. Watch the robot leave its dock on the map and in the robot view (RViz). The shelf light turns on when the robot is 5 m away; **I am done** appears when it arrives.
 5. After the last item, answer **No** to get repair steps and videos; the robot drives back to its dock.
