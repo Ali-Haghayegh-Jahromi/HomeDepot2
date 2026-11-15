@@ -9,9 +9,10 @@ import { Skeleton } from '@astryxdesign/core/Skeleton'
 import { StackItem } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
+import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden'
 import { Banner } from '@astryxdesign/core/Banner'
 import { CheckIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
-import { money } from '../shared/api'
+import { AisleChip, AisleSign, Price } from '../shared/Signage'
 import { itemSpecLine, itemTitle } from '../shared/names'
 import { StoreMap } from '../shared/StoreMap'
 import { useStoreLayout, useTourStatus } from '../shared/useRobot'
@@ -100,8 +101,11 @@ export function GuideScreen({ s }: { s: PhoneSession }) {
                 {lightOn ? 'The shelf light is on' : 'Follow the robot'}
               </Text>
             )}
-            <Heading level={1} type="display-2" color="inherit">
-              Aisle {item.aisle} · Bay {item.shelf}
+            <Heading level={1} color="inherit">
+              <VisuallyHidden>
+                Aisle {item.aisle} · Bay {item.shelf}
+              </VisuallyHidden>
+              <AisleSign aisle={item.aisle} bay={item.shelf} />
             </Heading>
             <Text color="inherit" className="hero-sub">
               <strong>{itemTitle(item)}</strong>
@@ -140,9 +144,7 @@ export function GuideScreen({ s }: { s: PhoneSession }) {
               </Text>
             </VStack>
           </StackItem>
-          <Text type="large" weight="bold" hasTabularNumbers>
-            {money(item.price)}
-          </Text>
+          <Price value={item.price} size="lg" />
         </HStack>
       </Card>
 
@@ -158,9 +160,7 @@ export function GuideScreen({ s }: { s: PhoneSession }) {
                 <Text maxLines={1}>
                   {itemTitle(i)}
                 </Text>
-                <Text type="supporting">
-                  Aisle {i.aisle} · Bay {i.shelf}
-                </Text>
+                <AisleChip aisle={i.aisle} bay={i.shelf} tone="quiet" />
               </li>
             ))}
           </ol>

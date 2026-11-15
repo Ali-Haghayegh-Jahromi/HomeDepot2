@@ -172,7 +172,7 @@
     --_astryx-pre-tempo-duration-slow-max: 935ms;
     --_astryx-motion-tempo: 1;
     --font-family-body: Figtree, system-ui, sans-serif;
-    --font-family-heading: Figtree, system-ui, sans-serif;
+    --font-family-heading: "Barlow Condensed", Arial Narrow, sans-serif;
     --font-family-code: ui-monospace, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     --color-syntax-keyword: light-dark(#6b187c, #efa8ff);
     --color-syntax-string: light-dark(#0b5615, #a4d6a3);
@@ -373,7 +373,7 @@
   }
 
   .astryx-heading {
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
   }
 
   .astryx-text[data-type="body"] {
@@ -541,6 +541,11 @@
     --astryx-section-padding: var(--spacing-3);
   }
 
+  .astryx-chat-message-bubble[data-sender="user"] {
+    background-color: var(--color-background-inverted);
+    color: var(--color-on-dark);
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }
@@ -668,7 +673,7 @@
     --text-display-3-weight: var(--font-weight-normal);
     --text-display-3-leading: 1.4667;
     --font-family-body: Figtree, system-ui, sans-serif;
-    --font-family-heading: Figtree, system-ui, sans-serif;
+    --font-family-heading: "Barlow Condensed", Arial Narrow, sans-serif;
     --font-family-code: ui-monospace, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   }
   }

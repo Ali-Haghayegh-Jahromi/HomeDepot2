@@ -481,29 +481,94 @@ body {
 /* the welcome screen: the visit in three steps, under the photo button */
 .welcome-steps {
   display: grid;
-  gap: var(--spacing-2);
+  gap: var(--spacing-5);
   margin: 0;
-  padding: var(--spacing-4);
+  padding: var(--spacing-5) var(--spacing-4);
+  border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-container);
-  background: var(--color-background-muted);
+  background: var(--color-background-card);
   list-style: none;
 }
 
+/* the visit as a route: three stops, a dashed trail between them (the robot's trail on the map) */
 .welcome-steps li {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--spacing-3);
+}
+
+.welcome-steps li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  inset-block: var(--spacing-10) calc(var(--spacing-5) * -1 + var(--spacing-1));
+  inset-inline-start: calc(var(--spacing-5) - var(--border-width));
+  border-inline-start: calc(var(--border-width) * 2) dashed var(--color-border-orange);
 }
 
 .welcome-step-icon {
   display: inline-grid;
   place-items: center;
   flex: none;
-  inline-size: var(--spacing-8);
-  block-size: var(--spacing-8);
-  border-radius: var(--radius-full);
+  inline-size: var(--spacing-10);
+  block-size: var(--spacing-10);
+  border-radius: var(--radius-element);
   background: var(--color-background-orange);
   color: var(--color-text-orange);
+}
+
+/* the last stop is the shelf: the robot's green */
+.welcome-steps li:last-child .welcome-step-icon {
+  background: var(--color-success);
+  color: var(--color-on-success);
+}
+
+.welcome-steps strong {
+  margin-inline-end: var(--spacing-1);
+  font-family: var(--font-family-heading);
+  font-size: var(--font-size-xl);
+  color: var(--color-text-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .welcome > * {
+    animation: rise-in var(--duration-slow) var(--ease-entrance) both;
+  }
+
+  .welcome > :nth-child(2) {
+    animation-delay: calc(var(--duration-fast) * 0.65);
+  }
+
+  .welcome > :nth-child(3) {
+    animation-delay: calc(var(--duration-fast) * 1.3);
+  }
+
+  .welcome-steps li {
+    animation: rise-in var(--duration-slow) var(--ease-entrance) both;
+  }
+
+  .welcome-steps li:nth-child(1) {
+    animation-delay: calc(var(--duration-fast) * 1.95);
+  }
+
+  .welcome-steps li:nth-child(2) {
+    animation-delay: calc(var(--duration-fast) * 2.6);
+  }
+
+  .welcome-steps li:nth-child(3) {
+    animation-delay: calc(var(--duration-fast) * 3.25);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-2));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* the alternatives to an item, folded under it: one choice with it */
@@ -581,8 +646,10 @@ body {
 }
 
 .hero-distance {
-  font-size: var(--font-size-xl);
+  font-family: var(--font-family-heading);
+  font-size: var(--font-size-3xl);
   font-weight: var(--font-weight-bold);
+  line-height: 1.1;
 }
 
 .shelf-tag {
@@ -696,16 +763,18 @@ body {
 
 .repair-steps {
   display: grid;
-  gap: var(--spacing-3);
+  gap: var(--spacing-4);
   margin: 0;
   padding: 0;
   list-style: none;
   counter-reset: step;
 }
 
+/* each step on a rail, like the robot's route: a numbered stop, a line down to the next */
 .repair-steps li {
+  position: relative;
   display: grid;
-  grid-template-columns: var(--spacing-7) minmax(0, 1fr);
+  grid-template-columns: var(--spacing-8) minmax(0, 1fr);
   gap: var(--spacing-3);
   align-items: start;
   counter-increment: step;
@@ -713,20 +782,31 @@ body {
 
 .repair-steps li::before {
   content: counter(step);
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
-  block-size: var(--spacing-7);
-  border-radius: var(--radius-full);
-  background: var(--color-accent-muted);
-  color: var(--color-text-accent);
+  block-size: var(--spacing-8);
+  border-radius: var(--radius-inner);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-family: var(--font-family-heading);
   font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xl);
   font-variant-numeric: tabular-nums;
+}
+
+.repair-steps li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  inset-block: var(--spacing-8) calc(var(--spacing-4) * -1);
+  inset-inline-start: calc(var(--spacing-4) - var(--border-width));
+  border-inline-start: calc(var(--border-width) * 2) dashed var(--color-border-orange);
 }
 
 .repair-steps li p {
   margin: 0;
-  padding-block-start: var(--spacing-0-5);
+  padding-block-start: var(--spacing-1);
 }
 
 .video-play {
@@ -898,6 +978,7 @@ body {
 }
 
 .health-pill {
+  white-space: nowrap;
   padding: var(--spacing-1-5) var(--spacing-3);
   border-radius: var(--radius-full);
   background: var(--color-background-muted);
@@ -1587,6 +1668,61 @@ body {
   }
 }
 
+/* A narrow screen (a laptop split in two, a tablet): the stage scrolls instead of squeezing.
+   Kiosk and phone side by side, the live store below them; the story strip in two rows. */
+@media (max-width: 1100px) {
+  .page-stage body {
+    overflow: auto;
+  }
+  .stage {
+    block-size: auto;
+    min-block-size: 100vh;
+  }
+  .stage-main {
+    --phone-h: min(80vh, 46rem);
+    container-type: inline-size;
+    grid-template-columns: minmax(13rem, 1fr) calc(var(--phone-h) * 410 / 864);
+    grid-auto-rows: auto;
+  }
+  .stage-main > :nth-child(1),
+  .stage-main > :nth-child(2) {
+    block-size: calc(var(--phone-h) + var(--spacing-7) + var(--spacing-3));
+  }
+  .stage-main > :nth-child(3) {
+    grid-column: 1 / -1;
+    min-block-size: 36rem;
+  }
+  .story-acts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stage-top > .astryx-stack {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-2);
+  }
+}
+
+/* a phone-sized window: one column, kiosk first, then the phone, then the store */
+@media (max-width: 640px) {
+  .stage-main {
+    --phone-h: min(78vh, 44rem);
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
+  }
+  .stage-main > :nth-child(2) {
+    justify-self: center;
+    inline-size: calc(var(--phone-h) * 410 / 864);
+  }
+  .stage-main > :nth-child(1) {
+    block-size: auto;
+  }
+  .story-acts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stage-top .plain-list {
+    display: none;
+  }
+}
+
 /* ------------------------------------------------------------------ studio view (?view=studio, 1920 x 1080) */
 
 .page-studio body {
@@ -1972,4 +2108,225 @@ html.page-studio {
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ------------------------------------------------------------------ store signage (Signage.tsx) */
+
+/* A price as the shelf-edge tag prints it: condensed dollars, small raised cents. */
+.price {
+  display: inline-flex;
+  align-items: flex-start;
+  font-family: var(--font-family-heading);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 1;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.price-sign,
+.price-cents {
+  font-size: 0.55em;
+  line-height: 1;
+  padding-block-start: 0.12em;
+}
+
+.price-cents {
+  margin-inline-start: 0.06em;
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.12em;
+}
+
+.price-sm {
+  font-size: var(--font-size-lg);
+}
+
+.price-md {
+  font-size: var(--font-size-2xl);
+}
+
+.price-lg {
+  font-size: var(--font-size-3xl);
+}
+
+/* The aisle marker as a chip: orange, condensed, upper case; the bay after a thin rule. */
+.aisle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1-5);
+  min-block-size: var(--spacing-6);
+  padding-inline: var(--spacing-2);
+  border-radius: var(--radius-inner);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-family: var(--font-family-heading);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.aisle-chip-bay {
+  padding-inline-start: var(--spacing-1-5);
+  border-inline-start: var(--border-width) solid color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.aisle-chip-word {
+  font-size: 0.78em;
+  font-weight: var(--font-weight-semibold);
+  opacity: 0.85;
+}
+
+/* not on the route yet: the same marker, quieter, so the picked rows lead */
+.aisle-chip.is-quiet {
+  background: var(--color-background-orange);
+  color: var(--color-text-orange);
+}
+
+/* The overhead aisle sign on the guide screen: a hanging orange board, the aisle number huge. */
+.aisle-sign {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  margin-block: var(--spacing-4) var(--spacing-1);
+  border-radius: var(--radius-element);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  box-shadow: var(--shadow-med);
+  font-family: var(--font-family-heading);
+  line-height: 0.9;
+  text-transform: uppercase;
+}
+
+/* the two rods it hangs from */
+.aisle-sign::before,
+.aisle-sign::after {
+  content: '';
+  position: absolute;
+  inset-block-start: calc(var(--spacing-4) * -1);
+  block-size: var(--spacing-4);
+  inline-size: calc(var(--border-width) * 2);
+  background: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.aisle-sign::before {
+  inset-inline-start: var(--spacing-5);
+}
+
+.aisle-sign::after {
+  inset-inline-end: var(--spacing-5);
+}
+
+.aisle-sign-block {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-1-5);
+  min-inline-size: var(--spacing-12);
+  padding: var(--spacing-3) var(--spacing-5) var(--spacing-4);
+}
+
+.aisle-sign-block.is-bay {
+  border-inline-start: var(--border-width) dashed color-mix(in srgb, currentColor 50%, transparent);
+}
+
+.aisle-sign-word {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.14em;
+  opacity: 0.9;
+}
+
+.aisle-sign-num {
+  font-size: calc(var(--font-size-5xl) * 1.35);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
+}
+
+.aisle-sign-block.is-bay .aisle-sign-num {
+  font-size: var(--font-size-5xl);
+  opacity: 0.92;
+}
+
+/* the shelf light is on, or the customer is there: the sign picks up the green glow at its edge */
+.guide-hero.is-lit .aisle-sign,
+.guide-hero.is-here .aisle-sign {
+  box-shadow:
+    0 0 0 var(--spacing-1) color-mix(in srgb, var(--color-on-success) 35%, transparent),
+    var(--shadow-med);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aisle-sign {
+    transform-origin: 50% calc(var(--spacing-4) * -1);
+    animation: sign-swing 1.4s var(--ease-entrance) 1;
+  }
+}
+
+@keyframes sign-swing {
+  0% {
+    transform: rotate(-3deg);
+  }
+  45% {
+    transform: rotate(1.5deg);
+  }
+  75% {
+    transform: rotate(-0.6deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* "Anything else?": the collected items as a till receipt, a dashed rule above the total */
+.receipt {
+  text-align: start;
+}
+
+.receipt-head {
+  display: block;
+  margin-block-end: var(--spacing-3);
+  font-family: var(--font-family-heading);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.receipt-total {
+  margin-block-start: var(--spacing-3);
+  padding-block-start: var(--spacing-3);
+  border-block-start: var(--border-width) dashed var(--color-border-emphasized);
+}
+
+/* the name in the phone's header, set like the store's signs */
+.brand-word {
+  font-family: var(--font-family-heading);
+  font-size: var(--font-size-xl);
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* the stage's floor: a store pegboard, a grid of punched holes behind the kiosk, phone and map */
+.stage-main {
+  background-color: var(--color-background-body);
+  background-image: radial-gradient(
+    circle at center,
+    color-mix(in srgb, var(--color-border-emphasized) 70%, transparent) 0,
+    color-mix(in srgb, var(--color-border-emphasized) 70%, transparent) calc(var(--spacing-0-5) + var(--border-width)),
+    transparent calc(var(--spacing-0-5) + var(--border-width) * 2)
+  );
+  background-size: var(--spacing-6) var(--spacing-6);
+  background-position: center;
+}
+
+.stage-wordmark {
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }

@@ -21,6 +21,7 @@ import {
 } from '@heroicons/react/24/outline'
 import type { ReactNode } from 'react'
 import { money } from '../shared/api'
+import { AisleChip, Price } from '../shared/Signage'
 import { itemSpecLine, itemTitle } from '../shared/names'
 import type { Item } from '../shared/types'
 import { photoBefore } from './Conversation'
@@ -149,9 +150,7 @@ function ItemRow({
           {spec}
         </Text>
       )}
-      <Text weight="bold" hasTabularNumbers as="span" className="item-row-price">
-        {money(item.price)}
-      </Text>
+      <Price value={item.price} className="item-row-price" />
       {item.reason && (
         <Text type="supporting" as="span" className="item-row-reason clamp-2">
           {item.reason}
@@ -160,7 +159,7 @@ function ItemRow({
       {/* where it is and the pick control share their own row, so the price column never moves */}
       <span className="item-row-foot">
         <span className="item-row-meta">
-          <Badge label={`Aisle ${item.aisle} · Bay ${item.shelf}`} variant="neutral" />
+          <AisleChip aisle={item.aisle} bay={item.shelf} tone={picked ? 'accent' : 'quiet'} />
           {tier && <Badge label={tier.label} variant={tier.variant} />}
         </span>
         <span className={picked ? 'pick-mark is-on' : 'pick-mark'}>
@@ -360,9 +359,7 @@ export function ItemsFooter({ s }: { s: PhoneSession }) {
             </Text>
           </VStack>
         </StackItem>
-        <Text type="large" weight="bold" hasTabularNumbers>
-          {money(total)}
-        </Text>
+        <Price value={total} size="lg" />
       </HStack>
       {s.budget != null && (
         <ProgressBar

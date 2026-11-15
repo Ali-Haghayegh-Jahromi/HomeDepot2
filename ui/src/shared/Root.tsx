@@ -5,6 +5,8 @@ import '@fontsource/figtree/500.css'
 import '@fontsource/figtree/600.css'
 import '@fontsource/figtree/700.css'
 import '@fontsource/figtree/800.css'
+import '@fontsource/barlow-condensed/600.css'
+import '@fontsource/barlow-condensed/700.css'
 import { themes, defaultThemeSlug } from '../astryx-themes'
 import './app.css'
 

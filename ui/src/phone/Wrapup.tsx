@@ -13,6 +13,7 @@ import { VStack } from '@astryxdesign/core/VStack'
 import { CheckIcon, ClockIcon, PlayIcon, PlusIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline'
 import { StackItem } from '@astryxdesign/core/Stack'
 import { money } from '../shared/api'
+import { Price } from '../shared/Signage'
 import { itemSpecLine, itemTitle, shortItemName } from '../shared/names'
 import type { Item, Summary } from '../shared/types'
 import type { PhoneSession } from './usePhoneSession'
@@ -40,7 +41,10 @@ export function AnythingElse({ s }: { s: PhoneSession }) {
         </Text>
       </VStack>
       {s.pickedItems.length > 0 && (
-        <Card padding={4}>
+        <Card padding={4} className="receipt">
+          <Text type="label" color="secondary" className="receipt-head">
+            In your cart
+          </Text>
           <VStack gap={2} as="ul" className="plain-list" aria-label="In your cart">
             {s.pickedItems.map((i) => (
               <HStack key={i.sku} as="li" gap={2} vAlign="center">
@@ -55,10 +59,18 @@ export function AnythingElse({ s }: { s: PhoneSession }) {
                     </Text>
                   </VStack>
                 </StackItem>
-                <Text hasTabularNumbers>{money(i.price)}</Text>
+                <Price value={i.price} size="sm" />
               </HStack>
             ))}
           </VStack>
+          <HStack gap={2} vAlign="center" className="receipt-total">
+            <StackItem size="fill">
+              <Text type="label">
+                {s.pickedItems.length} item{s.pickedItems.length > 1 ? 's' : ''} · pay at any register
+              </Text>
+            </StackItem>
+            <Price value={s.pickedItems.reduce((t, i) => t + i.price, 0)} size="md" />
+          </HStack>
         </Card>
       )}
       {s.notice && (

@@ -93,7 +93,7 @@ export const aisleTheme = {
     "--_astryx-pre-tempo-duration-slow-max": "935ms",
     "--_astryx-motion-tempo": "1",
     "--font-family-body": "Figtree, system-ui, sans-serif",
-    "--font-family-heading": "Figtree, system-ui, sans-serif",
+    "--font-family-heading": "\"Barlow Condensed\", Arial Narrow, sans-serif",
     "--font-family-code": "ui-monospace, \"SF Mono\", Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
     "--color-syntax-keyword": "light-dark(#6b187c, #efa8ff)",
     "--color-syntax-string": "light-dark(#0b5615, #a4d6a3)",
@@ -281,7 +281,7 @@ export const aisleTheme = {
         "lineHeight": "var(--text-display-3-leading)"
       },
       "base": {
-        "letterSpacing": "-0.02em"
+        "letterSpacing": "0"
       }
     },
     "text": {
@@ -439,6 +439,12 @@ export const aisleTheme = {
       "base": {
         "padding": "var(--spacing-3)"
       }
+    },
+    "chat-message-bubble": {
+      "sender:user": {
+        "backgroundColor": "var(--color-background-inverted)",
+        "color": "var(--color-on-dark)"
+      }
     }
   },
   __onDark: {
@@ -516,8 +522,8 @@ export const aisleTheme = {
         "fallbacks": "system-ui, sans-serif"
       },
       "heading": {
-        "family": "Figtree",
-        "fallbacks": "system-ui, sans-serif",
+        "family": "Barlow Condensed",
+        "fallbacks": "Arial Narrow, sans-serif",
         "weights": {
           "1": "700",
           "2": "700",

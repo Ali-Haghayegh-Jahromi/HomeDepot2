@@ -25,6 +25,7 @@ import { StackItem } from '@astryxdesign/core/Stack'
 import { usePrefersReducedMotion, useElapsed } from '../shared/hooks'
 import { clock, openPhotoPicker } from './media'
 import { scrollArea, useDraftHasPhoto } from './mirror'
+import { BrandMark } from '../shared/BrandMark'
 import type { Message, PhoneSession } from './usePhoneSession'
 
 const SUGGESTIONS = [
@@ -79,7 +80,7 @@ function Thinking({ since, last }: { since: number; last: Message | undefined })
   const seconds = useElapsed(since)
   const step = thinkingStep(seconds, !!(last?.photo || last?.hadPhoto), !!last?.voiceSeconds)
   return (
-    <ChatMessage sender="assistant">
+    <ChatMessage sender="assistant" avatar={<BrandMark size="sm" />}>
       <ChatMessageBubble variant="ghost">
         <VStack gap={2} className="thinking" aria-live="polite">
           <HStack gap={2} vAlign="center">
@@ -109,7 +110,7 @@ function Bubble({
 }) {
   if (m.who === 'bot') {
     return (
-      <ChatMessage sender="assistant" data-anchor={'m-' + m.id}>
+      <ChatMessage sender="assistant" avatar={<BrandMark size="sm" />} data-anchor={'m-' + m.id}>
         <ChatMessageBubble>
           {m.kind === 'understood' ? (
             <Understood m={m} photo={photo} />
@@ -193,7 +194,9 @@ function Welcome({ s }: { s: PhoneSession }) {
   return (
     <VStack gap={5} className="welcome" data-anchor="welcome">
       <VStack gap={2}>
-        <Heading level={1}>{again ? 'What else are you fixing?' : 'What are you fixing today?'}</Heading>
+        <Heading level={1} type="display-3">
+          {again ? 'What else are you fixing?' : 'What are you fixing today?'}
+        </Heading>
         <Text as="p" color="secondary">
           Snap a photo of what's broken and tell me what happened. I'll find the parts in this store and walk you to
           them.
@@ -207,8 +210,8 @@ function Welcome({ s }: { s: PhoneSession }) {
               <span className="welcome-step-icon" aria-hidden>
                 <Icon icon={icon} size="sm" color="inherit" />
               </span>
-              <Text type="supporting" as="span">
-                <strong>{i + 1}.</strong> {text}
+              <Text as="span">
+                <strong>{i + 1}</strong> {text}
               </Text>
             </li>
           ))}
@@ -372,7 +375,7 @@ export function Conversation({ s }: { s: PhoneSession }) {
             />
           ))}
           {screen === 'sorry' && data.question && !s.busy && (
-            <ChatMessage sender="assistant">
+            <ChatMessage sender="assistant" avatar={<BrandMark size="sm" />}>
               <ChatMessageBubble>
                 <Text as="p">{data.question}</Text>
               </ChatMessageBubble>

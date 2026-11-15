@@ -65,7 +65,9 @@ function TopBar({ st }: { st: Stage }) {
       <HStack gap={3} vAlign="center">
         <BrandMark size="lg" />
         <VStack gap={0}>
-          <Heading level={1}>Aisle Guide</Heading>
+          <Heading level={1} className="stage-wordmark">
+            Aisle Guide
+          </Heading>
           <Text type="supporting">Describe the repair. The AI finds the parts. A robot walks you to them.</Text>
         </VStack>
         <StackItem size="fill" />

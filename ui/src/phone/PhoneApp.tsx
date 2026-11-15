@@ -51,7 +51,7 @@ function Header({ s }: { s: PhoneSession }) {
       <HStack gap={2} vAlign="center" className="phone-head">
         <BrandMark size="sm" />
         <VStack gap={0}>
-          <Text type="label" weight="bold">
+          <Text type="label" weight="bold" className="brand-word">
             Aisle Guide
           </Text>
           <Text type="supporting" aria-live="polite">
