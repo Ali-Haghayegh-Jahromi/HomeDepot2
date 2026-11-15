@@ -7,18 +7,18 @@
 <link rel="icon" href="data:,">
 <!--
   RViz in the browser, clean for recording: connects by itself, scales the 1920x1080 screen to the
-  window (16:9, letterboxed in the same dark colour as RViz's background), no controls, no password,
+  window (16:9, letterboxed in white, RViz's background and the studio card's), no controls, no password,
   reconnects after a restart. ?view_only=1 ignores mouse and keyboard (the demo stage's studio view
   uses that). The full noVNC page with its controls is still at vnc.html.
 -->
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a1317; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #ffffff; }
   #screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
   /* noVNC paints its own grey behind the picture: use RViz's background colour instead */
-  #screen > div { background: #0a1317 !important; }
+  #screen > div { background: #ffffff !important; }
   #status {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-    font: 500 1.125rem/1.4 system-ui, sans-serif; color: #ffffffb3; pointer-events: none;
+    font: 500 1.125rem/1.4 system-ui, sans-serif; color: #525252; pointer-events: none;
     transition: opacity .3s;
   }
   body.is-connected #status { opacity: 0; }

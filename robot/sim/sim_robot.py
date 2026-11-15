@@ -39,6 +39,9 @@ INK = (0.04, 0.07, 0.09)                # --color-text-primary (dark)
 PAPER = (1.0, 1.0, 1.0)                 # --color-background-surface
 SUCCESS = (0.082, 0.502, 0.239)         # --color-success #15803d (the robot and its light)
 SUCCESS_MUTED = (0.702, 0.890, 0.733)   # --color-success-muted #b3e3bb
+SHELF = (1.0, 0.780, 0.631)             # --color-background-orange #ffc7a1: the web map's shelves
+SHELF_RIM = (0.933, 0.651, 0.478)       # a slightly deeper peach, so the shelves read on the white floor
+WALL = (0.831, 0.831, 0.831)            # --color-border-emphasized #d4d4d4
 # HD_RVIZ_VIEW=top (the default, for recording): signs and labels drawn to be read from above
 TOP_VIEW = os.environ.get('HD_RVIZ_VIEW', 'top').lower() != '3d'
 # Department names on the top view, in two short lines that fit between two aisle signs
@@ -166,10 +169,14 @@ class SimRobot(Node):
         def box(ns, x0, y0, x1, y1, z0, z1, rgb, alpha=1.0):
             add(Marker.CUBE, ns, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, x1 - x0, y1 - y0, z1 - z0, rgb, alpha)
 
-        # Floor
-        box('floor', 0, 0, L.WIDTH, L.DEPTH, -0.06, -0.01, (0.90, 0.90, 0.88) if TOP_VIEW else (0.80, 0.80, 0.78))
-        # Racks: orange uprights and beams, with grey shelf levels full of "stock"
-        for x0, y0, x1, y1 in L.rack_boxes():
+        # Floor (top view: white, as the web map's floor, on RViz's white background)
+        box('floor', 0, 0, L.WIDTH, L.DEPTH, -0.06, -0.01, PAPER if TOP_VIEW else (0.80, 0.80, 0.78))
+        # Racks. Top view: flat peach shelves, as on the web map. 3D: orange uprights and beams,
+        # with shelf levels full of "stock".
+        for x0, y0, x1, y1 in (L.rack_boxes() if TOP_VIEW else []):
+            box('rack_rim', x0, y0, x1, y1, 0.0, 3.30, SHELF_RIM)
+            box('rack_top', x0 + 0.1, y0 + 0.1, x1 - 0.1, y1 - 0.1, 3.30, 3.40, SHELF)
+        for x0, y0, x1, y1 in ([] if TOP_VIEW else L.rack_boxes()):
             for level in (0.15, 1.0, 1.85, 2.7):
                 box('rack_shelf', x0, y0, x1, y1, level, level + 0.08, ORANGE)
                 box('rack_stock', x0 + 0.1, y0 + 0.1, x1 - 0.1, y1 - 0.1, level + 0.08, level + 0.6,
@@ -209,16 +216,16 @@ class SimRobot(Node):
         t = L.WALL
         for x0, y0, x1, y1 in ((0, 0, L.ENTRANCE[0], t), (L.ENTRANCE[1], 0, L.WIDTH, t), (0, L.DEPTH - t, L.WIDTH, L.DEPTH),
                                (0, 0, t, L.DEPTH), (L.WIDTH - t, 0, L.WIDTH, L.DEPTH)):
-            box('wall', x0, y0, x1, y1, 0.0, 4.0, (0.55, 0.57, 0.60), 0.35)
+            box('wall', x0, y0, x1, y1, 0.0, 4.0, WALL if TOP_VIEW else (0.55, 0.57, 0.60), 1.0 if TOP_VIEW else 0.35)
         if not TOP_VIEW:
             add(Marker.TEXT_VIEW_FACING, 'label', sum(L.ENTRANCE) / 2, 0.6, 2.6, 0, 0, 0.5, (1.0, 1.0, 1.0), 1.0,
                 'ENTRANCE')
         # The robot, big enough to find in a top view of the whole store: a green disc with a white
-        # rim under the robot model, and a dark heading arrow in front of it (above the model), all
-        # locked to the robot's own frame, so RViz moves them with TF.
-        for kind, z, sx, sy, sz, rgb, x in ((Marker.CYLINDER, 0.05, 1.9, 1.9, 0.02, PAPER, 0.0),
-                                            (Marker.CYLINDER, 0.065, 1.6, 1.6, 0.02, SUCCESS, 0.0),
-                                            (Marker.ARROW, 1.9, 1.05, 0.32, 0.7, INK, 0.3)):
+        # halo and a white heading arrow, drawn above everything else (signs at 4.9 m, labels at
+        # 5.15 m), all locked to the robot's own frame, so RViz moves them with TF.
+        for kind, z, sx, sy, sz, rgb, x in ((Marker.CYLINDER, 5.40, 3.1, 3.1, 0.02, PAPER, 0.0),
+                                            (Marker.CYLINDER, 5.42, 2.5, 2.5, 0.02, SUCCESS, 0.0),
+                                            (Marker.ARROW, 5.46, 1.4, 0.5, 0.9, PAPER, -0.55)):
             m = Marker()
             m.header.frame_id = 'base_footprint'        # stamp 0: always the newest pose
             m.ns, m.id, m.type, m.action = 'robot_footprint', len(markers), kind, Marker.ADD
@@ -238,10 +245,10 @@ class SimRobot(Node):
         the kiosk, the dock, the registers and the entrance, all large enough for a recording."""
         for a in range(1, L.N_AISLES + 1):
             x = L.aisle_x(a)
-            for y in (L.FRONT_Y0 - 1.25, L.BACK_Y1 + 1.25):
-                add(Marker.CYLINDER, 'aisle_sign', x, y, 4.60, 2.25, 2.25, 0.05, INK)          # dark rim
-                add(Marker.CYLINDER, 'aisle_sign', x, y, 4.65, 1.95, 1.95, 0.05, PAPER)
-                add(Marker.TEXT_VIEW_FACING, 'aisle_number', x, y, 4.9, 0, 0, 1.35, INK, 1.0, str(a))
+            y = L.FRONT_Y0 - 1.25            # once, in front (as on the web map)
+            add(Marker.CYLINDER, 'aisle_sign', x, y, 4.60, 2.25, 2.25, 0.05, INK)          # dark rim
+            add(Marker.CYLINDER, 'aisle_sign', x, y, 4.65, 1.95, 1.95, 0.05, PAPER)
+            add(Marker.TEXT_VIEW_FACING, 'aisle_number', x, y, 4.9, 0, 0, 1.35, INK, 1.0, str(a))
             add(Marker.TEXT_VIEW_FACING, 'aisle_name', x, L.FRONT_Y0 - 3.4, 4.9, 0, 0, 0.72, INK, 1.0, SHORT_NAMES[a])
         for x0, y0, x1, y1, label in L.FRONT_OBSTACLES:
             if label == 'kiosk':

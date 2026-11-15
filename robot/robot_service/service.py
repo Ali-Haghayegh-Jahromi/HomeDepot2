@@ -25,6 +25,7 @@ import json
 import logging
 import math
 import os
+import re
 import queue
 import sys
 import threading
@@ -154,6 +155,15 @@ def read_jsonl(since=None, session_id=None, limit=500, level=None):
     except FileNotFoundError:
         pass
     return entries[-limit:] if limit and limit > 0 else entries, last
+
+
+def short_name(name):
+    """A short, plain item name for RViz's label ("Decking board") from a catalogue name: no
+    brand, sizes or pack counts; its last two words (RViz draws spaces very wide)."""
+    words = re.sub(r'\([^)]*\)', ' ', str(name or '')).split(',')[0].split()
+    words = [w for w in words if not re.search(r'\d', w) and w.lower() not in ('x', 'in.', 'ft.', 'lb.', 'oz.', 'gal.')]
+    tail = ' '.join(words[-2:]) if len(words) > 1 else ' '.join(words)
+    return (tail[:1].upper() + tail[1:].lower()) if tail else str(name or '')[:16]
 
 
 def summary(stop):
@@ -345,9 +355,10 @@ class RosDriver:
             tx, ty = target['x'], target['y']
             lx, ly = target.get('light_x', tx), target.get('light_y', ty)
             # the 5 m ring: inside it the shelf light turns on
-            add(Marker.CYLINDER, tx, ty, 0.07, (2 * NEAR_M, 2 * NEAR_M, 0.01), (*green, 0.10), ns='near_ring')
+            # just above the shelves (3.4 m), below the labels and the robot
+            add(Marker.CYLINDER, tx, ty, 3.45, (2 * NEAR_M, 2 * NEAR_M, 0.01), (*green, 0.10), ns='near_ring')
             ring = [(tx + NEAR_M * math.cos(a * math.pi / 36), ty + NEAR_M * math.sin(a * math.pi / 36)) for a in range(73)]
-            add(Marker.LINE_STRIP, 0, 0, 0.09, (0.16, 0, 0), (*green, 0.95), ns='near_ring', points=ring)
+            add(Marker.LINE_STRIP, 0, 0, 3.47, (0.16, 0, 0), (*green, 0.95), ns='near_ring', points=ring)
             # the bay: the rack section beside the light, outlined (dark; bright green once its light is
             # on) and filled orange, on top of the rack
             west = lx < tx
@@ -361,18 +372,27 @@ class RosDriver:
             # its aisle's signs turn orange, as on the web map
             aisle = target.get('aisle')
             if aisle in layout.DEPARTMENTS:
-                for sy in (layout.FRONT_Y0 - 1.25, layout.BACK_Y1 + 1.25):
-                    add(Marker.CYLINDER, layout.aisle_x(aisle), sy, 4.72, (1.95, 1.95, 0.05), (*accent, 1.0), ns='target_aisle')
-            # a label: the item and where it is, on a white plate beside the bay
-            name = str(target.get('name') or target.get('sku') or '')
-            name = name if len(name) <= 24 else name[:23].rstrip() + '...'
-            where = f"Aisle {target.get('aisle')}, bay {target.get('shelf')}"
-            px = min(max(lx, 7.5), layout.WIDTH - 7.5)
-            py = ly + 3.1 if ly < layout.BACK_Y1 - 3 else ly - 3.1
-            width = max(len(name), len(where)) * 0.78 * 0.62 + 1.0   # RViz draws spaces wide
-            add(Marker.CUBE, px, py, 4.80, (width + 0.3, 2.5, 0.04), (*accent, 1.0), ns='target_label')
-            add(Marker.CUBE, px, py, 4.84, (width, 2.2, 0.04), (*paper, 1.0), ns='target_label')
-            add(Marker.TEXT_VIEW_FACING, px, py, 4.95, (0.0, 0.0, 0.78), (*ink, 1.0), f'{name}\n{where}', ns='target_label')
+                sy = layout.FRONT_Y0 - 1.25            # the aisle numbers are drawn once, in front
+                add(Marker.CYLINDER, layout.aisle_x(aisle), sy, 4.72, (1.95, 1.95, 0.05), (*accent, 1.0), ns='target_aisle')
+            # a label outside the 5 m ring: a short item name, and "A1 · B5" (aisle, bay) in orange,
+            # on a white plate with an orange rim. Separate text markers: RViz draws spaces very wide.
+            name = str(target.get('short_name') or short_name(target.get('name') or target.get('sku')))[:18]
+            h = 0.95
+            width = max(len(name) * h * 0.56, 4.6) + 1.4
+            plate_h = 2 * h + 1.3
+            # toward the middle of the store (the cross aisle and beyond), clear of the ring
+            off = NEAR_M + 1.0 + plate_h / 2
+            py = ty + off if ty < layout.DEPTH / 2 - 2 else ty - off
+            py = min(max(py, plate_h / 2 + 1.0), layout.BACK_Y1 - plate_h / 2)
+            px = min(max(tx, width / 2 + 0.8), layout.WIDTH - width / 2 - 0.8)
+            add(Marker.CUBE, px, py, 5.00, (width + 0.36, plate_h + 0.36, 0.04), (*accent, 1.0), ns='target_label')
+            add(Marker.CUBE, px, py, 5.04, (width, plate_h, 0.04), (*paper, 1.0), ns='target_label')
+            add(Marker.TEXT_VIEW_FACING, px, py + 0.62, 5.15, (0.0, 0.0, h), (*ink, 1.0), name, ns='target_label')
+            add(Marker.TEXT_VIEW_FACING, px - 1.25, py - 0.62, 5.15, (0.0, 0.0, h), (*accent, 1.0),
+                f"A{target.get('aisle')}", ns='target_label')
+            add(Marker.CYLINDER, px, py - 0.62, 5.12, (0.24, 0.24, 0.02), (*accent, 1.0), ns='target_label')
+            add(Marker.TEXT_VIEW_FACING, px + 1.25, py - 0.62, 5.15, (0.0, 0.0, h), (*accent, 1.0),
+                f"B{target.get('shelf')}", ns='target_label')
 
         for code, light in self._lights.items():
             x, y, z = light['x'], light['y'], light['z']
@@ -656,6 +676,7 @@ def post_event(body, queued_at):
 class Stop(BaseModel):
     sku: str
     name: str
+    short_name: Optional[str] = None   # e.g. "Deck board" for RViz's label; made from `name` when missing
     aisle: int
     shelf: int
     x: float
@@ -740,6 +761,16 @@ async def bad_request(request: Request, error: RequestValidationError):
 @app.get('/health')
 def health():
     return {'ok': True, 'mode': driver.name, 'nav2_ready': driver.ready()}
+
+
+@app.get('/n8n/health')
+def n8n_health():
+    """Whether n8n answers (its /healthz), for the demo stage's status pill."""
+    try:
+        ok = requests.get(f'{N8N_URL}/healthz', timeout=3).status_code == 200
+    except requests.RequestException:
+        ok = False
+    return {'ok': ok}
 
 
 @app.post('/tour/start')

@@ -94,8 +94,8 @@ Visualization Manager:
       Value: true
   Enabled: true
   Global Options:
-    # the theme's dark neutral (--color-background-inverted), as around the studio view's RViz frame
-    Background Color: 10; 19; 23
+    # white, as the studio view's card around RViz and the web map's floor: no dark bars
+    Background Color: 255; 255; 255
     Fixed Frame: map
     Frame Rate: 12
   Name: root
@@ -111,13 +111,14 @@ Visualization Manager:
       Angle: 0
       Name: Current View
       Near Clip Distance: 0.01
-      # pixels per metre: the store from its front wall to the back signs (37.5 m) fills the
-      # 1080 px screen; only the empty receiving area behind the back aisle signs is cut off
-      Scale: 28.5
+      # pixels per metre: the store's 60 m width (and a little margin) fills the 1920 px screen;
+      # in height that shows the front wall to the back of the racks (34 m), cutting off only the
+      # empty receiving area behind them
+      Scale: 30.8
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
       X: 30
-      Y: 18.7
+      Y: 17.2
     Saved: ~
 Window Geometry:
   Height: 1080
