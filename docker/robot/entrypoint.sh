@@ -22,6 +22,14 @@ HTTPS=$(yes_no "${HD_HTTPS:-no}")
 case "${HD_RVIZ_VIEW:-top}" in 3d|3D) VIEW=3d; RVIZ_CFG=/opt/hd/record-3d.rviz ;; *) VIEW=top; RVIZ_CFG=/opt/hd/record.rviz ;; esac
 LOGS=/hd/logs
 mkdir -p "$LOGS"
+# The log files belong to whoever owns the logs folder on the computer (not to root), so the demo folder
+# can be deleted or moved without sudo: handed to that owner now and every 20 s (for files made later,
+# e.g. a new or rotated log). Nothing to do when the folder is root's (or on a Mac, where Docker Desktop
+# maps the owner by itself).
+LOG_OWNER=$(stat -c '%u:%g' "$LOGS" 2>/dev/null)
+if [ -n "$LOG_OWNER" ] && [ "$LOG_OWNER" != "0:0" ]; then
+  ( while true; do chown -R "$LOG_OWNER" "$LOGS" 2>/dev/null; sleep 20; done ) &
+fi
 
 trap 'trap - TERM INT; kill 0 2>/dev/null; exit 0' TERM INT
 

@@ -251,7 +251,7 @@ class RosDriver:
         threading.Thread(target=self._wait_for_nav2, daemon=True).start()
 
     def _wait_for_nav2(self):
-        log.info('Waiting for Nav2 (start the simulation with ./run.sh sim) ...')
+        log.info('Waiting for Nav2 (the simulation starts with ./start.sh) ...')
         t0 = time.time()
         # Not BasicNavigator.waitUntilNav2Active(localizer='amcl'): in Humble it publishes its own default start
         # pose (0, 0) on /initialpose until it hears from AMCL, which throws AMCL's estimate away every time this
