@@ -33,7 +33,7 @@ Everything runs on one computer (Ubuntu, or a Mac with Apple Silicon or Intel) i
 | [store/map/](store/map/) | the Nav2 map (`store.pgm`, `store.yaml`) and a labelled picture |
 | [robot/sim/](robot/sim/) | the simulated robot and store, the Nav2 launch, the RViz layout |
 | [robot/robot_service/service.py](robot/robot_service/service.py) | the robot service (the API n8n talks to) |
-| [n8n/homedepot_guide_robot.json](n8n/homedepot_guide_robot.json) | **the workflow to import into n8n** |
+| [n8n/homedepot_guide_robot.json](n8n/homedepot_guide_robot.json) | **the main workflow** (`./start.sh` imports it), with its helpers [n8n/homedepot_ai_model.json](n8n/homedepot_ai_model.json) (sub-workflow: the Gemini → Claude model chain), [n8n/homedepot_status_poll.json](n8n/homedepot_status_poll.json) (`GET /help/status`, runs not saved) and [n8n/homedepot_timeout_check.json](n8n/homedepot_timeout_check.json) (every minute, runs not saved); all four built by `n8n/build_workflow.py` |
 | [n8n/setup.sh](n8n/setup.sh) | rebuilds the workflow, imports it + the credentials into n8n and switches it on (`./start.sh setup`) |
 | [n8n/build_workflow.py](n8n/build_workflow.py) | the workflow in readable form (regenerates the JSON) |
 | [n8n/test/](n8n/test/) | a stand-in for Gemini and Claude (no API key needed) and the workflow variant that uses it |
@@ -383,7 +383,7 @@ The n8n execution id in each row (`x1234` in the time line) is the run to open i
 
 ## Things to know
 
-- **The AI** was tested against the real Gemini API on a free key (photos, a voice note, the whole visit) and, for the model chain and every failure path, against the stand-in. **Claude has not been called for real** (no Anthropic key was available): its requests follow Anthropic's Messages API documentation and were checked against the stand-in, which answers in the same format. If the first real Claude call fails, open the failed run in n8n → **Executions** and look at the *(Claude)* node's error.
+- **The AI** was tested against the real Gemini API on a free key (photos, a voice note, the whole visit) and, for the model chain and every failure path, against the stand-in. **Claude has not been called for real** (no Anthropic key was available): its requests follow Anthropic's Messages API documentation and were checked against the stand-in, which answers in the same format. If the first real Claude call fails, open the failed run in n8n → **Executions** and look at the **Ask Claude** node's error in the linked run of the sub-workflow **Ask an AI model**.
 - Starting a new visit at the kiosk closes any visit still open: one robot, one customer.
 - If Nav2 cannot reach a shelf after three attempts, the service reports it as reached so the visit can continue (robot failures are out of scope).
 - The demo stage draws the QR code itself (no internet needed); the link under it always works.
