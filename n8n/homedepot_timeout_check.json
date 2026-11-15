@@ -1,0 +1,175 @@
+{
+  "name": "Timeout check (every minute)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Timeout check (every minute)\nOnce a minute: has any open visit had no customer input for 10 minutes? Only then does it call the main workflow, which closes the visit, sends the robot home and shows the phone its summary. The checks that find nothing are **not saved** (workflow settings), so the main workflow's Executions list shows only real steps.",
+        "height": 410,
+        "width": 950,
+        "color": 7
+      },
+      "id": "d4264621-02cd-5134-8e94-e5613a9004f8",
+      "name": "Note: Timeout check (every minute)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -70,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "40db45f0-a0e4-5621-9fe2-2c83683b05c7",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Open visits with no customer input for the timeout (the main workflow closes them). Usually none.\nSELECT count(*)::int AS idle FROM sessions\nWHERE status = 'active' AND last_input_at < now() - make_interval(mins => $1::int);",
+        "options": {
+          "queryReplacement": "={{ [ 10 ] }}"
+        }
+      },
+      "id": "c12beb74-0383-5d3c-bf78-c61ec2b40b5a",
+      "name": "Count idle visits",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hdPostgresApp0001",
+          "name": "HD Postgres (workflow tables)"
+        }
+      },
+      "notes": "No input for 10 minutes",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "221a9f78-a56a-5054-92bd-8443b1a090cd",
+              "leftValue": "={{ $json.idle > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "e684c5d6-b162-5773-83b3-cecb96338752",
+      "name": "Any visit idle?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        0
+      ],
+      "notes": "Usually no: nothing is saved",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/timeout",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ idle: $json.idle }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "bf827200-713c-51b0-9c62-32a896851425",
+      "name": "Close them (main workflow)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "notes": "Webhook \"Timer: idle visits\"",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Count idle visits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count idle visits": {
+      "main": [
+        [
+          {
+            "node": "Any visit idle?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any visit idle?": {
+      "main": [
+        [
+          {
+            "node": "Close them (main workflow)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "pinData": {},
+  "id": "hdIdleCheck00001",
+  "versionId": "7e930ca5-1aa0-5fc3-9a6b-6f6b8b847375",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

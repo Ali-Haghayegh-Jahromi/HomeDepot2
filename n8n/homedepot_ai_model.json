@@ -1,0 +1,820 @@
+{
+  "name": "Ask an AI model (Gemini → Claude fallback)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Ask an AI model: Gemini first, Claude as the fallback\nCalled by **AI 1** (relevant?) and **AI 2** (question or items) of the main workflow. One run = one AI call, tried on as many models as the customer's time allows.\n\n**Pick the next model** → Gemini or Claude? → ask it → **Usable answer?** If not: **Out of quota or busy?** The model **rests** (table ai_model_status) and later calls skip it. **Another model to try?** (models left, time left) loops back; otherwise the caller asks the customer to send it again.",
+        "height": 300,
+        "width": 1500,
+        "color": 1
+      },
+      "id": "9ea796af-9a16-579f-9418-338863a1dafe",
+      "name": "Note: title",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -720
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Pick and ask\nThe free Gemini models in Config order, then Claude (only with a key; never for a voice note alone).",
+        "height": 900,
+        "width": 1650,
+        "color": 5
+      },
+      "id": "7bd894e1-fc42-5edc-9ce1-3c63cbd6dbd6",
+      "name": "Note: Pick and ask",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -70,
+        -370
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Check, rest, try the next\nEvery try is logged (event \"ai_call\", with the reason it failed).",
+        "height": 910,
+        "width": 1170,
+        "color": 6
+      },
+      "id": "41756494-97d8-5d00-baa1-15600816c418",
+      "name": "Note: Check, rest, try the next",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1630,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "ai",
+              "type": "string"
+            },
+            {
+              "name": "check",
+              "type": "string"
+            },
+            {
+              "name": "gemini_body",
+              "type": "object"
+            },
+            {
+              "name": "claude_body",
+              "type": "object"
+            },
+            {
+              "name": "voice_only",
+              "type": "boolean"
+            },
+            {
+              "name": "deadline",
+              "type": "number"
+            },
+            {
+              "name": "try_ms",
+              "type": "number"
+            },
+            {
+              "name": "claude_model",
+              "type": "string"
+            },
+            {
+              "name": "rested",
+              "type": "array"
+            },
+            {
+              "name": "log_details",
+              "type": "object"
+            },
+            {
+              "name": "settings",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "id": "70e98795-4779-5a5c-89d5-14374a1edbb9",
+      "name": "Called by AI 1 or AI 2",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Which AI, its prompt + photo/voice, time budget",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The model chain's memory: models that answered \"out of quota\" or \"busy\" recently, and until when they rest.\n-- (Written by \"Remember: the model rests\"; ./status.sh shows them too.)\nSELECT coalesce(json_agg(json_build_object('model', model, 'until', resting_until, 'reason', reason)\n                         ORDER BY resting_until), '[]'::json) AS resting\nFROM ai_model_status WHERE resting_until > now();",
+        "options": {}
+      },
+      "id": "d810491d-6d1e-5b94-8930-8a3345279536",
+      "name": "Which AI models are resting?",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hdPostgresApp0001",
+          "name": "HD Postgres (workflow tables)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Out of quota / busy: skipped for a while",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Which model answers this try: the next one of the model chain (settings: ai_provider, gemini_models, and this\n// AI's Claude model), skipping models that rest (\"Which AI models are resting?\", the ones the AI before this one\n// rested, and the ones already tried in this call). Resting models stay at the end as a last resort, so there is\n// always something to try while time is left. This node only builds the list and the request; the If / Switch\n// nodes after it decide.\nconst input = $('Called by AI 1 or AI 2').first().json;\nconst cfg = input.settings;\nconst prev = $runIndex > 0 ? $('Pick the next model').first(0, $runIndex - 1).json : null;\nconst tried = prev ? [...prev.tried, prev.model] : [];\nlet resting = [];\ntry { resting = $('Which AI models are resting?').first().json.resting || []; } catch (e) { /* no table: none rest */ }\nconst restEnd = {};\nfor (const r of resting) restEnd[r.model] = Date.parse(r.until) || Date.now() + 60000;\nfor (const r of input.rested || []) restEnd[r.model] = Math.max(restEnd[r.model] || 0, Date.now() + r.rest_s * 1000);\nconst gemini = String(cfg.gemini_models || '').split(',').map((m) => m.trim()).filter(Boolean).map((model) => ({ provider: 'gemini', model }));\nconst claude = { provider: 'claude', model: input.claude_model };\nconst models = cfg.ai_provider === 'claude' ? [claude, ...gemini] : [...gemini, claude];\nconst open = models.filter((m) => !tried.includes(m.model));\nconst fresh = open.filter((m) => !(restEnd[m.model] > Date.now()));\nconst lastResort = open.filter((m) => restEnd[m.model] > Date.now()).sort((x, y) => restEnd[x.model] - restEnd[y.model]);\nconst order = [...fresh, ...lastResort];\nconst next = order[0] || models[0];\nconst timeout_ms = Math.round(Math.max(1500, Math.min(input.try_ms, input.deadline - Date.now() - 200)));\n// Claude: the model, plus the server-side refusal fallback where the model supports it (Sonnet 5.5 / Opus 5.x)\nconst fallbacks = /^claude-(sonnet-5-5|opus-5|fable-5)/.test(next.model);\nreturn [{ json: {\n  ai: input.ai, provider: next.provider, model: next.model, try: tried.length + 1, tried, left: order.length - 1,\n  skipped_resting: models.filter((m) => restEnd[m.model] > Date.now() && !tried.includes(m.model) && m.model !== next.model).map((m) => m.model),\n  last_resort: lastResort.includes(next), deadline: input.deadline, timeout_ms, full_try_ms: input.try_ms, t0: Date.now(),\n  url: `${cfg.gemini_base_url}/v1beta/models/${next.model}:generateContent`,\n  claude_url: `${cfg.claude_base_url}/v1/messages`,\n  gemini_body: next.provider === 'gemini' ? input.gemini_body : undefined,\n  claude_body: next.provider === 'claude' ? { model: next.model, ...input.claude_body, ...(fallbacks ? { fallbacks: 'default' } : {}) } : undefined,\n  claude_headers: { 'anthropic-version': cfg.claude_api_version, ...(fallbacks ? { 'anthropic-beta': 'server-side-fallback-2026-07-01' } : {}) },\n} }];\n"
+      },
+      "id": "02ea0cf2-b8c9-5859-a21e-f4937221033e",
+      "name": "Pick the next model",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "notes": "Gemini models in order, then Claude; resting ones last",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "39787e84-0401-5e8c-93fd-2cd74fb30835",
+                    "leftValue": "={{ $json.provider }}",
+                    "rightValue": "gemini",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Gemini"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "0ee20ef4-0586-5444-8da0-eb558a2a11d8",
+                    "leftValue": "={{ $json.provider }}",
+                    "rightValue": "claude",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Claude"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "2f9c0c31-e94b-5989-afe4-5bc04f90e452",
+      "name": "Gemini or Claude?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.gemini_body) }}",
+        "options": {
+          "timeout": "={{ $json.timeout_ms }}"
+        }
+      },
+      "id": "8f021a81-e8eb-5a9d-98bb-0b22c9efa6ee",
+      "name": "Ask Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        -160
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "hdGeminiApiKey001",
+          "name": "HD Google Gemini API key"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "generateContent, JSON schema, time limit",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "117ed764-604e-517f-8f16-bce85c782300",
+              "leftValue": "={{ $('Called by AI 1 or AI 2').first().json.settings.claude_key_set }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "55f55036-5bfc-5ad2-bc1c-b62ed89ac063",
+      "name": "Claude key set?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        160
+      ],
+      "notes": "./start.sh claude-key adds one",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d82b6dd4-6dca-5be0-99bb-382ccc842805",
+              "leftValue": "={{ !$('Called by AI 1 or AI 2').first().json.voice_only }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "5381693d-bf3e-51bd-be3e-138935fe88cc",
+      "name": "Can Claude read it?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        160
+      ],
+      "notes": "No: only a voice note (Claude cannot listen)",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.claude_url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json.claude_headers) }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.claude_body) }}",
+        "options": {
+          "timeout": "={{ $json.timeout_ms }}"
+        }
+      },
+      "id": "c78b3289-0bdd-5a8f-95dc-38e4e661fa44",
+      "name": "Ask Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        80
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "hdAnthropicKey001",
+          "name": "HD Anthropic API key (optional)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Messages API, structured output, time limit",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "04048b89-1784-5fee-a10e-ae6435396f6a",
+              "name": "skipped",
+              "value": "no_claude_key",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "7445819f-9724-5ec1-b8e7-3261f4a43b3a",
+      "name": "Skip Claude: no key",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e3de413d-bd89-50a4-99e7-901314883659",
+              "name": "skipped",
+              "value": "voice_note",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "52fa6e3d-eb85-5c00-87e8-e521e42f2fc9",
+      "name": "Skip Claude: voice note",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// The raw text the AI answered with (Gemini: \"thinking\" parts skipped; Claude: the text blocks), or null if there is none\nconst answerText = (reply) => {\n  try {\n    if (Array.isArray(reply.content)) {\n      if (['refusal', 'max_tokens'].includes(reply.stop_reason)) return null;\n      return reply.content.filter((p) => p.type === 'text').map((p) => p.text || '').join('');\n    }\n    return reply.candidates[0].content.parts.filter((p) => !p.thought).map((p) => p.text || '').join('');\n  } catch (e) { return null; }\n};\n// That text parsed as JSON (null if it failed); anything around the JSON object (such as ```json fences) is ignored.\nconst answer = (reply) => {\n  const text = answerText(reply);\n  if (text == null) return null;\n  try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)); } catch (e) { return null; }\n};\n// Why a call failed, and how long the model should rest (the If node \"Out of quota or busy?\" reads rest_s):\n//   quota_day / quota  HTTP 429 (Gemini RESOURCE_EXHAUSTED, Claude rate_limit_error): daily quota or per-minute rate\n//   busy / timeout     503 / 529 overloaded, other 5xx, network trouble, or our time limit cut it off\n//   model              404 / \"not supported for this model\": a wrong model name or setting (rests long)\n//   key                401 / 403: the API key is wrong (rests briefly; fix the key with ./start.sh key)\n//   request            any other 400: the request itself (e.g. a photo format) -> no rest, the next model may cope\nconst failureOf = (reply, pick) => {\n  const r = reply || {};\n  if (!r.error) return null;\n  const all = JSON.stringify(r.error).slice(0, 6000);\n  const code = (String(r.error.httpCode || '').match(/\\d{3}/) || String(r.error.message || '').match(/^\\s*(\\d{3})\\b/)\n    || all.match(/\\b[45]\\d\\d - /) || all.match(/\"code\"\\s*:\\s*(\\d{3})\\b/) || [])[0] || '';\n  const num = (code.match(/\\d{3}/) || [''])[0];\n  if (num === '429' || /RESOURCE_EXHAUSTED|rate_limit_error|exceeded your current quota|too many requests/i.test(all)) {\n    const daily = /per.?day|PerDay|daily/i.test(all);\n    const m = all.match(/retry in ([\\d.]+)\\s*s/i) || all.match(/retryDelay\\W+(\\d+)/i);\n    return { kind: daily ? 'quota_day' : 'quota', code: num,\n      rest_s: daily ? cfg.model_rest_quota_min * 60 : Math.max(20, m ? Math.ceil(Number(m[1])) : cfg.model_rest_rate_s) };\n  }\n  if (/timeout|timed out|ECONNABORTED|ETIMEDOUT/i.test(all))   // cut off: the model's fault only if it had a full try\n    return { kind: 'timeout', code: num, rest_s: pick.timeout_ms >= pick.full_try_ms * 0.8 ? cfg.model_rest_busy_s : 0 };\n  if (/^5\\d\\d$/.test(num) || /overloaded|UNAVAILABLE|high demand|ECONNRESET|ECONNREFUSED|socket hang up|EAI_AGAIN|ENOTFOUND/i.test(all))\n    return { kind: 'busy', code: num, rest_s: cfg.model_rest_busy_s };\n  if (num === '401' || num === '403' || /authentication_error|permission_error|API key not valid|API_KEY_INVALID|invalid x-api-key/i.test(all))\n    return { kind: 'key', code: num, rest_s: cfg.model_rest_busy_s };\n  if (num === '404' || /not_found_error|no longer available|is not found|not supported for this model|thinking level/i.test(all))\n    return { kind: 'model', code: num, rest_s: cfg.model_rest_broken_min * 60 };\n  return { kind: 'request', code: num, rest_s: 0 };\n};\n// ---- event log (best-effort: never throws). One \"ai_call\" entry: which AI, provider and model, how long,\n// HTTP/API error, parsed or not, the raw text when it was unusable.\nconst aiLog = (node, pick, reply, parsed, required, extra = {}) => {\n  try {\n    const r = reply || {};\n    const err = r.error ? String(r.error.message || r.error.description || JSON.stringify(r.error)).slice(0, 600) : null;\n    const text = answerText(r);\n    const missing = parsed ? required.filter((k) => parsed[k] === undefined || parsed[k] === null || parsed[k] === '') : [];\n    const ok = !err && !!parsed && missing.length === 0;\n    const cand = (r.candidates || [])[0] || {};\n    const u = r.usageMetadata ? { prompt: r.usageMetadata.promptTokenCount, answer: r.usageMetadata.candidatesTokenCount,\n        thoughts: r.usageMetadata.thoughtsTokenCount }\n      : r.usage ? { prompt: r.usage.input_tokens, answer: r.usage.output_tokens } : undefined;\n    return { event: 'ai_call', level: ok ? 'info' : 'error', at: pick.t0, duration_ms: Date.now() - pick.t0, details: {\n      node, provider: pick.provider, model: pick.model, try: pick.try, timeout_ms: pick.timeout_ms,\n      last_resort: pick.last_resort || undefined, ok, http_error: err,\n      http_code: r.error ? (r.error.httpCode || r.error.status || r.error.code || null) : null,\n      error_description: r.error && r.error.description ? String(r.error.description).slice(0, 600) : undefined,\n      error_raw: r.error ? JSON.stringify(r.error).slice(0, 1500) : undefined,\n      parsed: !!parsed, missing_fields: missing.length ? missing : undefined,\n      raw_answer: (!parsed || missing.length) && text != null ? text.slice(0, 3000) : undefined,\n      no_answer_text: text == null && !err ? true : undefined,\n      finish_reason: cand.finishReason || r.stop_reason, block_reason: r.promptFeedback ? r.promptFeedback.blockReason : undefined,\n      tokens: u, ...extra } };\n  } catch (e) { return { event: 'log_error', level: 'warn', details: { where: node, error: String(e) } }; }\n};\n\n// full-width punctuation (seen live: a question ending in \"？\") becomes plain ASCII before any check\nconst ascii = (t) => typeof t === 'string' ? t.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/　/g, ' ') : t;\n// a question that leaks notes or prompt text, talks to itself, drifts into another script, loops, or is far too long\n// is not shown (seen live: \"...job?s? [Note: include tool budget ...]\", \"...today চৈতন্যের (or just pick...)? Wait, what is...\")\nconst garbled = (q) => { q = String(q || '').replace(/\\s+/g, ' '); return q.length > 300 || /\\[\\s*(note|internal|system|todo|instruction)/i.test(q)\n  || /[?!.]\\w{0,2}[?!]/.test(q.replace(/\\?\\s*$/, '')) || /(\\b\\w+\\b)(\\s+\\1\\b){2,}/i.test(q) || /\\S{45,}/.test(q)\n  || /[^\\x20-\\x7E -ɏ‐-‧€¼-¾]/.test(q) || /\\bwait\\s*[,.!]/i.test(q)\n  || (q.match(/\\?/g) || []).length > 2; };\n\n// The answer of whichever model ran this try, read and checked. \"usable\": AI 1 gave a clear true/false; AI 2 gave\n// a question (plain, not garbled) or a list of items. On a failure: why, and how long the model should rest (rest_s).\n// The log entries of every try travel along (the caller saves them with the visit).\nconst input = $('Called by AI 1 or AI 2').first().json;\nconst cfg = input.settings;\nconst pick = $('Pick the next model').last().json;             // the try that just ran\nconst attempt = $runIndex + 1;                                   // this node runs once per try\nconst earlier = attempt > 1 ? $('Read the answer').first(0, $runIndex - 1).json : null;\nconst reply = $input.first().json;\nconst main = input.check === 'main';\nconst base = { ai: input.ai, attempt, provider: pick.provider, model: pick.model, sub_execution_id: String($execution.id),\n  rested: earlier ? earlier.rested : (input.rested || []), voice_skipped: earlier ? earlier.voice_skipped : false,\n  log: earlier ? earlier.log : [] };\nif (reply.skipped) {     // \"Skip Claude: no key\" or \"Skip Claude: voice note\"\n  const entry = { event: 'ai_skip', level: 'info', details: { node: input.ai, provider: pick.provider, model: pick.model,\n    try: pick.try, reason: reply.skipped, sub_execution_id: base.sub_execution_id } };\n  return [{ json: { ...base, usable: false, answer: null, rest_s: 0, failure: reply.skipped,\n    voice_skipped: base.voice_skipped || reply.skipped === 'voice_note', log: [...base.log, entry] } }];\n}\nconst a = answer(reply);\nif (main && a && typeof a === 'object') {\n  for (const k of ['question', 'understood', 'request_title']) a[k] = ascii(a[k]);\n  if (Array.isArray(a.options)) a.options = a.options.map(ascii);\n  if (Array.isArray(a.items)) a.items.forEach((x) => { if (x && typeof x === 'object') x.reason = ascii(x.reason); });\n}\nconst type = main && a && ['question', 'items'].includes(a.type) ? a.type : null;\nconst usable = main\n  ? (type === 'items' ? Array.isArray(a.items) && a.items.length > 0\n     : type === 'question' ? !!String(a.question || '').trim() && !garbled(a.question) : false)\n  : !!a && typeof a.relevant === 'boolean';\nconst required = main ? ['type', 'understood', 'request_title', ...(type === 'items' ? ['items'] : type === 'question' ? ['question'] : [])]\n  : ['relevant'];\nconst fail = usable ? null : (failureOf(reply, pick) || { kind: 'bad_answer', rest_s: 0, code: '' });\nconst entry = aiLog(input.ai, pick, reply, a, required, { attempt, ...(input.log_details || {}),\n  ...(main ? { answer_type: a ? a.type : undefined } : { verdict: a ? a.relevant : null, relevant: usable && a.relevant === true }),\n  failure: fail ? fail.kind : undefined, rest_s: fail && fail.rest_s ? fail.rest_s : undefined,\n  skipped_resting: pick.skipped_resting.length ? pick.skipped_resting : undefined,\n  garbled_question: main && type === 'question' && garbled(a.question) ? String(a.question).slice(0, 500) : undefined,\n  sub_execution_id: base.sub_execution_id });\nif (!usable && entry.details) { entry.details.ok = false; entry.level = 'error'; }\nreturn [{ json: { ...base, usable, answer: usable ? a : null, rest_s: fail ? fail.rest_s : 0, failure: fail ? fail.kind : null,\n  http_code: fail ? fail.code : null, error_text: reply.error ? String(reply.error.message || '').slice(0, 300) : null,\n  rested: fail && fail.rest_s ? [...base.rested, { model: pick.model, provider: pick.provider, rest_s: fail.rest_s, kind: fail.kind }] : base.rested,\n  log: [...base.log, entry] } }];\n"
+      },
+      "id": "6f912bc2-29c0-51ef-8254-cf43e7d6fe5a",
+      "name": "Read the answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        0
+      ],
+      "notes": "Gemini or Claude answer; usable? why it failed",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b102b4bd-e994-537c-a0ae-16a946df27c3",
+              "leftValue": "={{ $json.usable }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "eab9d2d0-78ef-5c9d-a953-18f9b9afcd40",
+      "name": "Usable answer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1940,
+        0
+      ],
+      "notes": "AI 1: true/false. AI 2: a question or items",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { ...$('Read the answer').last().json, answered: true } }}",
+        "options": {}
+      },
+      "id": "f29c660d-622b-5495-8ecc-84668ef69998",
+      "name": "Return the answer",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2180,
+        0
+      ],
+      "notes": "Back to AI 1 / AI 2",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3d876a3a-a2ac-54b7-9fb5-48ae2dcfbbcd",
+              "leftValue": "={{ $json.rest_s }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "9f379d84-be7e-5525-9be3-2c0efebec3db",
+      "name": "Out of quota or busy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1940,
+        360
+      ],
+      "notes": "429 / 503 / timeout: the model rests",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The model chain's memory: this model is out of quota or busy, so later calls skip it until resting_until.\nINSERT INTO ai_model_status (model, provider, resting_until, reason, http_code, detail, failures, last_failure_at, updated_at)\nVALUES ($1, $2, now() + make_interval(secs => $3::int), $4, nullif($5, ''), left($6, 500), 1, now(), now())\nON CONFLICT (model) DO UPDATE SET provider = EXCLUDED.provider,\n  resting_until = greatest(EXCLUDED.resting_until, CASE WHEN ai_model_status.resting_until > now() THEN ai_model_status.resting_until END),\n  reason = EXCLUDED.reason, http_code = EXCLUDED.http_code, detail = EXCLUDED.detail,\n  failures = ai_model_status.failures + 1, last_failure_at = now(), updated_at = now()\nRETURNING model, resting_until;",
+        "options": {
+          "queryReplacement": "={{ [ $json.model, $json.provider, $json.rest_s, $json.failure, String($json.http_code || ''), String($json.error_text || '') ] }}"
+        }
+      },
+      "id": "3ddd3175-bfd7-5f5c-ab95-993639332e38",
+      "name": "Remember: the model rests",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2180,
+        360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hdPostgresApp0001",
+          "name": "HD Postgres (workflow tables)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Table ai_model_status",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9d4e8265-31d5-541d-acec-df4dae9e734f",
+              "leftValue": "={{ $('Pick the next model').last().json.left > 0 && $('Pick the next model').last().json.deadline - Date.now() >= $('Called by AI 1 or AI 2').first().json.settings.min_try_ms }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "98811241-0c9e-5acf-96b0-fa18225f0b09",
+      "name": "Another model to try?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2420,
+        560
+      ],
+      "notes": "Models left and time left",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { ...$('Read the answer').last().json, answered: false } }}",
+        "options": {}
+      },
+      "id": "597f11ff-974b-55bf-95ea-51ec40aa1f46",
+      "name": "Return: no answer",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2660,
+        560
+      ],
+      "notes": "The caller asks the customer again",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Called by AI 1 or AI 2": {
+      "main": [
+        [
+          {
+            "node": "Which AI models are resting?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which AI models are resting?": {
+      "main": [
+        [
+          {
+            "node": "Pick the next model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick the next model": {
+      "main": [
+        [
+          {
+            "node": "Gemini or Claude?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini or Claude?": {
+      "main": [
+        [
+          {
+            "node": "Ask Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude key set?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude key set?": {
+      "main": [
+        [
+          {
+            "node": "Can Claude read it?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Claude: no key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Can Claude read it?": {
+      "main": [
+        [
+          {
+            "node": "Ask Claude",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Claude: voice note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Gemini": {
+      "main": [
+        [
+          {
+            "node": "Read the answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Claude": {
+      "main": [
+        [
+          {
+            "node": "Read the answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Claude: no key": {
+      "main": [
+        [
+          {
+            "node": "Read the answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Claude: voice note": {
+      "main": [
+        [
+          {
+            "node": "Read the answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read the answer": {
+      "main": [
+        [
+          {
+            "node": "Usable answer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usable answer?": {
+      "main": [
+        [
+          {
+            "node": "Return the answer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Out of quota or busy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Out of quota or busy?": {
+      "main": [
+        [
+          {
+            "node": "Remember: the model rests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Another model to try?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remember: the model rests": {
+      "main": [
+        [
+          {
+            "node": "Another model to try?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Another model to try?": {
+      "main": [
+        [
+          {
+            "node": "Pick the next model",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return: no answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "id": "hdAskAiModel0001",
+  "versionId": "0b3b44bf-bf19-5b32-ae76-c0ee73de8f73",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

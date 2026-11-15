@@ -370,7 +370,7 @@ n8n_setup() {   # credentials + workflow into n8n, switched on; only when someth
   reader_pw=$(env_get HD_LLM_READER_PASSWORD)
   secrets_sum=$(printf '%s|%s|%s|%s|%s|%s' "$pg_user" "$pg_pw" "$pg_db" "$reader_pw" "$key" "$claude_key" | cksum | awk '{print $1}')
   wf_sum=$(cksum < "$ROOT/n8n/build_workflow.py" | awk '{print $1}')
-  fingerprint="v2|$wf_sum|$secrets_sum|$AI|$gemini_url|$phone_link|$claude_set|$provider|$gemini_models"
+  fingerprint="v3|$wf_sum|$secrets_sum|$AI|$gemini_url|$phone_link|$claude_set|$provider|$gemini_models"
   saved=$(dc exec -T n8n cat /home/node/.n8n/hd_setup_fingerprint 2>/dev/null)
   if [ "${FORCE:-no}" != yes ] && [ "$saved" = "$fingerprint" ]; then
     good "n8n workflow is up to date"
@@ -418,13 +418,15 @@ n8n_setup() {   # credentials + workflow into n8n, switched on; only when someth
   [ $status -eq 0 ] || { echo; bad "n8n could not import the credentials"; return 1; }
   printf '.'
 
-  # 2. the workflow, built for this network (needs only Docker: Python runs in the robot image)
+  # 2. the four workflows, built for this network (needs only Docker: Python runs in the robot image): the main
+  #    one, the sub-workflow "Ask an AI model (Gemini → Claude fallback)", "Phone screen (status poll)" and
+  #    "Timeout check (every minute)", as one list (n8n imports a list in one go)
   errors=$(mktemp "${TMPDIR:-/tmp}/hd_build.XXXXXX")
   docker run --rm --network none -v "$ROOT/n8n:/src:ro" \
       -e HD_ROBOT_URL=http://robot:8000 -e HD_PHONE_LINK="$phone_link" -e HD_GEMINI_URL="$gemini_url" \
       -e HD_CLAUDE_KEY_SET="$claude_set" -e HD_AI_PROVIDER="$provider" -e HD_GEMINI_MODELS="$gemini_models" \
-      -e HD_WORKFLOW_FILE=/tmp/workflow.json --entrypoint /bin/sh "$IMAGE" \
-      -c 'python3 /src/build_workflow.py >/dev/null && cat /tmp/workflow.json' 2>"$errors" \
+      -e HD_WORKFLOW_FILE=/tmp/workflow.json -e HD_WORKFLOW_BUNDLE=/tmp/workflows.json --entrypoint /bin/sh "$IMAGE" \
+      -c 'python3 /src/build_workflow.py >/dev/null && cat /tmp/workflows.json' 2>"$errors" \
     | dc exec -T n8n sh -c 'cat > /tmp/hd_workflow.json'
   if ! dc exec -T n8n sh -c 'test -s /tmp/hd_workflow.json'; then
     echo; bad "could not build the workflow (n8n/build_workflow.py):"; tail -n 5 "$errors" | sed 's/^/         /'
@@ -433,11 +435,23 @@ n8n_setup() {   # credentials + workflow into n8n, switched on; only when someth
   rm -f "$errors"
   printf '.'
   dc exec -T n8n n8n import:workflow --input=/tmp/hd_workflow.json >/dev/null 2>&1 \
-    || { echo; bad "n8n could not import the workflow"; return 1; }
+    || { echo; bad "n8n could not import the workflows"; return 1; }
   printf '.'
-  # 3. switch it on ("publish"), remember what was imported, restart so the webhooks go live
-  dc exec -T n8n n8n publish:workflow --id=hdGuideRobot00001 >/dev/null 2>&1 \
-    || { echo; bad "n8n could not switch the workflow on"; return 1; }
+  # 3. switch them on ("publish"), remember what was imported, restart so the webhooks go live
+  #    (the main workflow before the status poll, which takes over its old GET help/status webhook; the n8n CLI
+  #    sometimes fails while the running n8n holds the database, so each one gets three tries)
+  for wf_id in hdAskAiModel0001 hdGuideRobot00001 hdPhoneStatus001 hdIdleCheck00001; do
+    tries=0
+    until out=$(dc exec -T n8n n8n publish:workflow --id=$wf_id 2>&1); do
+      tries=$((tries + 1))
+      if [ $tries -ge 3 ]; then
+        echo; bad "n8n could not switch the workflow $wf_id on:"; printf '%s\n' "$out" | tail -n 3 | sed 's/^/         /'
+        return 1
+      fi
+      sleep 2
+    done
+    printf '.'
+  done
   dc exec -T n8n sh -c 'rm -f /tmp/hd_workflow.json; cat > /home/node/.n8n/hd_setup_fingerprint' <<EOF
 $fingerprint
 EOF
@@ -478,8 +492,10 @@ hd_status() {   # plain-language health of each part, with the fix; returns 1 if
   if curl -sf -o /dev/null --max-time 3 "http://localhost:$N8N_PORT/healthz"; then
     good "n8n (the workflow engine): http://localhost:$N8N_PORT"
     wf=$(dc exec -T n8n n8n list:workflow --active=true 2>/dev/null)
-    if printf '%s' "$wf" | grep -q hdGuideRobot00001; then good "Workflow 'Home Depot guide robot' is switched on"
-    else bad "The workflow is not switched on"; fix "Fix: ./start.sh setup"; problems=1; fi
+    if printf '%s' "$wf" | grep -q hdGuideRobot00001 && printf '%s' "$wf" | grep -q hdPhoneStatus001 \
+       && printf '%s' "$wf" | grep -q hdIdleCheck00001; then
+      good "Workflow 'Home Depot guide robot' (+ status poll and timeout check) is switched on"
+    else bad "The workflows are not switched on"; fix "Fix: ./start.sh setup"; problems=1; fi
     if [ "$AI" = offline ]; then
       if [ "$(state_of fake-ai)" = "running " ]; then good "AI: stand-in (offline mode)"
       else bad "The stand-in AI is not running"; fix "Fix: ./start.sh"; problems=1; fi

@@ -1,0 +1,260 @@
+{
+  "name": "Phone screen (status poll)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Phone screen (status poll)\nThe phone and the stage ask **\"what should I show now?\"** every 1.5 s. This only reads the screen the main workflow saved (the light coming on, the robot arriving, a timeout) and its decision trace. It changes nothing, so **successful runs are not saved** (workflow settings): the main workflow's Executions list shows only real steps.",
+        "height": 630,
+        "width": 1190,
+        "color": 7
+      },
+      "id": "c2c6faca-6fd8-5b03-b0a9-9620633b4adf",
+      "name": "Note: Phone screen (status poll)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -70,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "help/status",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "df9f239f-e09f-5a9d-8779-14d0b38403b7",
+      "name": "Phone: what to show now",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "849ef251-fc0d-5dce-b905-1cccaa49e499"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The phone's current screen, as the last run of the main workflow saved it (with that run's decision trace).\nSELECT (SELECT row_to_json(s) FROM (SELECT session_id, status, screen, screen_data FROM sessions WHERE session_id = $1) s) AS session;",
+        "options": {
+          "queryReplacement": "={{ [ String(($json.query || {}).session_id || '') ] }}"
+        }
+      },
+      "id": "10bbb4ea-d3bf-554f-99d4-3eddd1253118",
+      "name": "Load the screen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "hdPostgresApp0001",
+          "name": "HD Postgres (workflow tables)"
+        }
+      },
+      "notes": "Read only: nothing is written",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2efeff71-4476-59a1-af44-5b8beead9717",
+              "leftValue": "={{ !!$json.session }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "19a2b362-ab9e-5ba0-9898-355a6d06f7eb",
+      "name": "Is this a known visit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "40c58df7-9e4c-533d-9db3-68b03ede269c",
+              "name": "http_status",
+              "value": 200,
+              "type": "number"
+            },
+            {
+              "id": "9d03917b-9033-5562-8b32-3312fd5327ab",
+              "name": "reply",
+              "value": "={{ { session_id: $json.session.session_id, screen: $json.session.screen, message: ($json.session.screen_data || {}).message, data: ($json.session.screen_data || {}).data || {}, status: $json.session.status, trace: ($json.session.screen_data || {}).trace || null } }}",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "id": "6fd066bb-8c8b-50b1-9439-3527b849f46b",
+      "name": "Show the current screen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        -100
+      ],
+      "notes": "+ the trace of the run that set it",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eca17d7a-c6e3-5fd3-a603-711e74cd8e84",
+              "name": "http_status",
+              "value": 404,
+              "type": "number"
+            },
+            {
+              "id": "55a7428f-7d93-5bb7-be1a-eb9ba310350a",
+              "name": "reply",
+              "value": "={{ { error: 'unknown_session', message: 'No visit with this session_id. Press the kiosk button to start one.' } }}",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "id": "c38f4ab7-b229-5a1b-8c1d-e0336b873141",
+      "name": "Refuse: unknown visit (404)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.reply) }}",
+        "options": {
+          "responseCode": "={{ $json.http_status }}"
+        }
+      },
+      "id": "5a3927aa-8006-5a0b-9623-38a896e95561",
+      "name": "Reply with the screen",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Phone: what to show now": {
+      "main": [
+        [
+          {
+            "node": "Load the screen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load the screen": {
+      "main": [
+        [
+          {
+            "node": "Is this a known visit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is this a known visit?": {
+      "main": [
+        [
+          {
+            "node": "Show the current screen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Refuse: unknown visit (404)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Show the current screen": {
+      "main": [
+        [
+          {
+            "node": "Reply with the screen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refuse: unknown visit (404)": {
+      "main": [
+        [
+          {
+            "node": "Reply with the screen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  },
+  "pinData": {},
+  "id": "hdPhoneStatus001",
+  "versionId": "8b8f549e-0c81-56b6-bf89-7fd1dca63989",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
