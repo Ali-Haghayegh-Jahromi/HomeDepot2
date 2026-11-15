@@ -1,10 +1,25 @@
 # Aisle Guide (Home Depot kiosk + guide robot demo)
 
-See README.md (setup, running, testing), API_CONTRACT.md (every webhook and endpoint) and WORKFLOW_EXPLAINED.md.
+See QUICKSTART.md (for the people who run the demo: plain words, Ubuntu and Mac), README.md (setup, running, testing), API_CONTRACT.md (every webhook and endpoint), WORKFLOW_EXPLAINED.md (the workflows node by node) and DEMO_SCRIPT.md (the recording).
 
-- The n8n workflow's source is `n8n/build_workflow.py`; never hand-edit the generated JSON. Rebuild, then `./n8n/setup.sh` to import and activate.
-- The robot side is simulation only. It runs in Docker container `hd_robot` on ROS domain 42, localhost only. Never touch the real Dingo setup in the parent folder (`Real/`).
-- The front end is `ui/` (React 19 + TypeScript + Vite + Astryx). `npm run build` in `ui/` writes `ui/dist/` with the same page names as `demo/` (stage `index.html`, phone page `phone.html?s=<session_id>`, base `/demo/`). `npm run dev` serves it on http://localhost:5173/demo/ with the API proxied to port 8000. The old plain-HTML pages in `demo/` are what the robot service serves at http://localhost:8000/demo/ until its `DEMO_DIR` is switched to `ui/dist/` (see README.md, "The front end").
+**Boundaries**
+- Work only inside this folder. Never touch the parent folder `Real/` (the real Dingo robot setup) or anything else outside it.
+- Never commit `.env` (passwords and API keys) or `test_photos/` (licences need attribution/share-alike). The one sample photo that ships is `samples/deck_board.jpg` (CC0, see `samples/CREDITS.md`).
+
+**How it runs**
+- Everything runs in Docker, as the Compose project `homedepot` (`docker/compose.yaml`): containers `hd_postgres`, `hd_n8n`, `hd_robot` and, in offline mode, `hd_fake_ai` (the stand-in AI, `n8n/test/fake_gemini.py`); volumes `homedepot_hd_pgdata`, `homedepot_hd_n8ndata`, `homedepot_hd_tls`; image `hd-demo-robot:latest`. Ports on this computer: 8000 (demo pages + robot API), 5678 (n8n), 6080 (RViz in the browser), 8443 (https for phones).
+- `./start.sh`, `./stop.sh`, `./status.sh`, `./reset.sh`, `./tools.sh` and the Mac `.command` files share `docker/lib.sh`. They must run on macOS's bash 3.2 with BSD tools (check with `docker run --rm -v $PWD:/w -w /w bash:3.2 bash -n <file>`). Settings live in `.env` (made from `docker/env.template`). A second, isolated copy of the stack for testing sets `HD_PROJECT`, `HD_NAME_PREFIX`, `HD_IMAGE` and other ports in its `.env`.
+- `./start.sh` rebuilds the robot image whenever a file that goes into it changes (`ui/`, `robot/`, `tools/`, `docker/robot/`, `store/`, `n8n/test/fake_gemini.py`, ...): that recreates `hd_robot`.
+- The robot side is simulation only (ROS 2 Humble + Nav2 + RViz in `hd_robot`, ROS domain 42, localhost only).
+
+**The front end** is `ui/` (React 19 + TypeScript + Vite + Astryx). The robot image builds it (a `node:22` stage of `docker/robot.Dockerfile`) and the robot service serves it at http://localhost:8000/demo/ (stage `index.html`, phone page `phone.html?s=<session_id>`). The old plain-HTML pages in `demo/` are only a fallback (`HD_FRONTEND=demo`). For work on the UI: `npm run dev` in `ui/` serves http://localhost:5173/demo/ with the API proxied to port 8000; `npm run build` writes `ui/dist/`.
+
+**n8n**
+- The workflows' source is `n8n/build_workflow.py`; never hand-edit the generated JSON in `n8n/`. `./start.sh setup` (same as `./n8n/setup.sh`) builds them inside the robot image, imports the credentials and the workflows, and switches them on; `./start.sh` does it by itself when the source or a setting changed.
+- There are four workflows: **Home Depot guide robot** (the main one), **Ask an AI model (Gemini → Claude fallback)** (sub-workflow), **Phone screen (status poll)** and **Timeout check (every minute)**.
+- Canvas rules: every decision is an If or Switch node named as a question ("Claude key set?"); every outcome is a Set node; Code nodes only shape data (never decide). The decision trace on every reply comes from these nodes.
+
+**Testing**: `./tools.sh test` (a whole visit), `./tools.sh check` (logs, one time line per visit), `tools/edge_case_test.py` (the awkward cases and the model chain; needs the stand-in AI), `./status.sh` (each part, with the fix).
 
 ## UI/UX Engineering Standards
 
