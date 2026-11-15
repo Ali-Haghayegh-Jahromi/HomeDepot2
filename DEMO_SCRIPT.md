@@ -31,7 +31,7 @@ Pick the **decking board** and the **deck screws**: $18.94, "$31.06 left of your
 ### 0:00-0:20 Hook: the problem
 
 - **On screen (real footage, 5 s, shot beforehand):** a close-up of a cracked deck board, then a person standing in a long store aisle, looking up and down the shelves.
-- **Caption over the footage (one sourced number):** `[[STATISTIC: one number about shoppers who can't find an item, or can't find staff to ask, in a home-improvement or big-box store. Put the source (publisher, year) in small type under it. DO NOT RECORD WITH THIS PLACEHOLDER: if no reliable source is found, drop the caption and say the line below without a number.]]`
+- **Caption over the footage (one sourced number):** **"78% of shoppers have left a store without buying anything in the past six months because of problems like long lines or a lack of help."** Small type under it: *Logile 2026 Peak Hour Penalty Report: survey of 750 U.S. shoppers, October 2026.* (It covers everyday retail, not home improvement only: say "shoppers", not "Home Depot customers".)
 - **Cut to** the studio view: kiosk idle ("Not sure what you need for your repair?"), the idle phone showing a dimmed "What are you fixing today?" with "Waiting for a customer", the robot on its dock in RViz.
 - **Say:** "A board on your deck cracked. The store has tens of thousands of products, and you don't know what to buy, what size, or where it is. Staff are busy. This is Aisle Guide."
 

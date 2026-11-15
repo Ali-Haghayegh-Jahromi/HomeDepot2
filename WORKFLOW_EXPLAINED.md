@@ -39,8 +39,9 @@ At "zoom to fit" the main canvas (105 nodes) is a map, not something to read. Th
 | Shot | Frame: left → right | Zoom | Top-left (x, y) |
 |---|---|---|---|
 | **1. Who is calling? → check the call** | the trigger column ("Kiosk button" … "Timer: idle visits") on the left to **Route the call** on the right; the purple note "2 Check the call" fills the width, the four "Refuse: …" nodes and "Reply with the error" below it | ≈ 68 % | (−80, −780) |
-| **2. Two AIs, n8n decides** | **Write the relevancy prompt** on the left to the column "The phone's next screen" on the right: AI 1 → **Relevant to home repair?** → catalogue → AI 2 → **Did AI 2 ask a question or pick items?** → **Budget known?** → **Main items within the budget?** → **Room for the tools too?** → Show the item list / Ask for the budget | ≈ 56 % | (2600, −900) |
-| **3. Robot events → save → tell the robot → reply** | the green "4 Robot events" lane bottom left (**Near or arrived?**, **Phone still guiding to it?**), the phone's next screen column, then **Add log context → Save state → Did the save apply? → Any orders for the robot? → Send orders one at a time → Build the reply → Reply** along the top | ≈ 56 % | (4780, −300) |
+| **2a. The AI lane, first half** | **Write the relevancy prompt** at the left edge; **AI 1: relevancy check → Did AI 1 answer? → Relevant to home repair? → Read the item catalogue → Write the main prompt → AI 2: understand the need → Did AI 2 answer?** across the middle | 100 % | (2600, −350) |
+| **2b. The AI lane, second half** | **Did AI 2 ask a question or pick items?** at the left; **Budget known? → Main items within the budget? → Room for the tools too?**; the outcome nodes on the right | 100 % | (4450, −350) |
+| **3. Robot events** | the green lane **4 Robot events**: **Read the robot event → Is this event for the item being fetched? → Near or arrived? → Phone still guiding to it?**, **Turn the shelf light on**, **Show 'You have arrived'** | 100 % | (4790, 620) |
 
 Two more that need no framing: the sub-workflow **Ask an AI model** at "zoom to fit" (17 nodes, readable as is), and one opened execution of a customer message (Executions tab → the row → n8n paints the path the run took; the "AI 2: understand the need" node links to its sub-execution).
 

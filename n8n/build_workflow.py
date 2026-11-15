@@ -1136,7 +1136,7 @@ const SYSTEM =
   'value); when the STATE gives a budget, choose items that fit it.\n' +
   '6. When you know enough, answer with type "items": at most ' + cfg.max_items + ' items, each with a "role":\n' +
   '   "main": the first-choice items that fix the problem, including the other materials the job needs (one item ' +
-  'per need, the best fit for the need and budget);\n' +
+  'per need, the best fit for the need and budget); safety gear (glasses, gloves, masks) is never a main item;\n' +
   '   "alternative": another option for a main item (cheaper or better quality), right after that main item, at ' +
   'most one per main item, only when the catalogue has a sensible one;\n' +
   '   "tool": every tool the job really needs (for example a drill/driver and bits for screws, a saw to cut a board ' +
