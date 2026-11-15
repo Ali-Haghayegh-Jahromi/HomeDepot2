@@ -162,6 +162,9 @@ export function applyScrollPlace(el: HTMLElement, at: ScrollPlace): boolean {
 
 // ------------------------------------------------------------------ publishing (the real phone)
 
+/** This page load: the service takes a new load's first snapshot whatever its version. */
+const LOAD_ID = 'p' + Math.random().toString(36).slice(2, 12)
+
 const DEBOUNCE_MS = 150
 const HEARTBEAT_MS = 3000
 const MAX_BYTES = 480_000 // the service takes up to 512 kB
@@ -217,7 +220,9 @@ export function useMirrorPublisher(s: PhoneSession, composer: ComposerView | nul
     scroll: 0,
   })
   latest.current = { ...latest.current, s, composer }
-  const version = useRef(0)
+  // Versions start from the clock, so a reloaded page (same client id: it lives in sessionStorage,
+  // and iOS often reloads the tab after the camera) always counts up from above its last run.
+  const version = useRef(Date.now())
   const timer = useRef(0)
   const client = useRef('')
 
@@ -235,7 +240,7 @@ export function useMirrorPublisher(s: PhoneSession, composer: ComposerView | nul
         const area = scrollArea()
         if (area) latest.current.at = scrollPlace(area) // where it is right now, not at the last scroll event
         const state = await snapshot(latest.current.s, latest.current.composer, latest.current.scroll, latest.current.at)
-        body = JSON.stringify({ client_id: client.current, role: 'customer', version: v, state })
+        body = JSON.stringify({ client_id: client.current, role: 'customer', version: v, load_id: LOAD_ID, state })
         if (body.length > MAX_BYTES) {
           // too big with the photos: send it without them (the bubbles then say "Photo")
           const lean = {
@@ -243,11 +248,11 @@ export function useMirrorPublisher(s: PhoneSession, composer: ComposerView | nul
             talk: state.talk.map(({ photo: _photo, ...m }) => m),
             composer: state.composer && { ...state.composer, photo: null },
           }
-          body = JSON.stringify({ client_id: client.current, role: 'customer', version: v, state: lean })
+          body = JSON.stringify({ client_id: client.current, role: 'customer', version: v, load_id: LOAD_ID, state: lean })
           if (body.length > MAX_BYTES) return
         }
       } else {
-        body = JSON.stringify({ client_id: client.current, role: 'customer', version: version.current })
+        body = JSON.stringify({ client_id: client.current, role: 'customer', version: version.current, load_id: LOAD_ID })
       }
       const res = await fetch('/mirror/' + encodeURIComponent(session), {
         method: 'POST',

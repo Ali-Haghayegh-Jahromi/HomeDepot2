@@ -9,13 +9,15 @@ It makes no decisions and never calls n8n: if it fails, the visit goes on unchan
 Everything is in memory: only the latest snapshot per visit is kept, at most MAX_BYTES each,
 and a visit's mirror is dropped TTL_S after its phone was last heard from.
 
-    POST /mirror/{session_id}          {client_id, role, version, state?}   (no state = heartbeat)
+    POST /mirror/{session_id}          {client_id, role, version, load_id?, state?}   (no state = heartbeat)
     GET  /mirror/{session_id}          the latest snapshot: {live, client_id, version, state, age_s}
     GET  /mirror/{session_id}/stream   Server-Sent Events: "snapshot" (full) and "ping" (heartbeat)
 
 Only role "customer" is kept (the stage's own embedded phone page says role "stage" and is
 ignored). Several phones on one visit: the latest one to publish a full snapshot is shown; an
-older version from the same phone (arriving out of order) is dropped.
+older version from the same phone (arriving out of order) is dropped. A phone page that reloads
+keeps its client_id (sessionStorage) but sends a new `load_id`: its first snapshot is taken whatever
+its version (iOS often reloads the tab after the camera was open, exactly at the photo).
 
 To switch it on, two lines in service.py after `app = FastAPI(...)`:
     from mirror import router as mirror_router
@@ -46,6 +48,8 @@ class _Mirror:
     def __init__(self):
         self.client_id = None
         self.version = -1
+        self.load_id = None
+        self.old_loads = []      # earlier page loads of the shown phone: their late snapshots are stale
         self.state = None
         self.seen = 0.0          # time.monotonic() of the last snapshot or heartbeat
         self.subscribers = set()
@@ -74,7 +78,7 @@ def _prune():
         del _mirrors[sid]
     for m in _mirrors.values():   # still watched, but the phone is long gone: drop its snapshot
         if m.state is not None and now - m.seen > TTL_S:
-            m.client_id, m.version, m.state = None, -1, None
+            m.client_id, m.version, m.state, m.load_id = None, -1, None, None
     if len(_mirrors) > MAX_SESSIONS:
         for sid, _ in sorted(_mirrors.items(), key=lambda kv: kv[1].seen)[:len(_mirrors) - MAX_SESSIONS]:
             m = _mirrors.pop(sid)
@@ -102,6 +106,9 @@ async def publish(session_id: str, request: Request):
     client = msg.get('client_id')
     version = msg.get('version')
     state = msg.get('state')
+    load_id = msg.get('load_id')
+    if not isinstance(load_id, str) or not _ID.match(load_id):
+        load_id = None
     if not isinstance(client, str) or not _ID.match(client) or not isinstance(version, int):
         return _bad(400, 'bad_fields', 'client_id (text) and version (number) are required')
     if msg.get('role', 'customer') != 'customer':
@@ -115,6 +122,8 @@ async def publish(session_id: str, request: Request):
             return {'ok': True, 'need_state': True}
         if m.client_id != client:
             return {'ok': True, 'ignored': 'not_the_shown_phone'}
+        if load_id and load_id != m.load_id:   # the same phone after a reload: send everything again
+            return {'ok': True, 'need_state': True}
         if version < m.version:
             return {'ok': True, 'ignored': 'stale'}
         if version > m.version:   # the phone has changed something we did not get
@@ -126,9 +135,17 @@ async def publish(session_id: str, request: Request):
     if m is None:
         _prune()
         m = _mirrors[session_id] = _Mirror()
-    if m.client_id == client and version <= m.version:
-        return {'ok': True, 'ignored': 'stale'}
-    m.client_id, m.version, m.state, m.seen = client, version, state, time.monotonic()
+    if m.client_id == client:
+        if load_id is not None and load_id in m.old_loads:   # a late frame of a page that has reloaded since
+            return {'ok': True, 'ignored': 'stale'}
+        same_load = load_id is None or load_id == m.load_id
+        if same_load and version <= m.version:
+            return {'ok': True, 'ignored': 'stale'}
+        if not same_load and m.load_id:
+            m.old_loads = (m.old_loads + [m.load_id])[-8:]
+    else:
+        m.old_loads = []
+    m.client_id, m.version, m.state, m.seen, m.load_id = client, version, state, time.monotonic(), load_id
     m.publish('snapshot', m.payload())
     return {'ok': True}
 
