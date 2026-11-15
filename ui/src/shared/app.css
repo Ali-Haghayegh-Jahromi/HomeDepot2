@@ -1494,6 +1494,26 @@ body {
   content: '→ ';
 }
 
+/* the guards and plumbing of the run, folded into one muted chip ("✓ 9 checks passed") */
+.decision.is-checks {
+  border-color: var(--color-border);
+  cursor: help;
+}
+
+.decision.is-checks .decision-node {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  background: var(--color-success-muted);
+  color: var(--color-text-success);
+  font-weight: var(--font-weight-semibold);
+}
+
+.decision.is-checks:focus-visible {
+  outline: var(--focus-outline-width) solid var(--color-accent);
+  outline-offset: var(--spacing-0-5);
+}
+
 /* a workflow without `trace`: the chips were read off the phone's screen, so they look provisional */
 .decision-path.is-inferred .decision {
   border-style: dashed;
@@ -1592,21 +1612,58 @@ html.page-studio {
 
 /*
  * kiosk | phone | robot. The phone is drawn 1.2x a phone's CSS width (its page is 390 px wide,
- * scaled up), so its text reads on a compressed recording; the kiosk column narrows once the
- * customer has scanned the code.
+ * scaled up), so its text reads on a compressed recording. Once the customer has scanned the
+ * code the kiosk folds away (its track goes to 0, its gap with it) and the robot column, with
+ * RViz, takes the width; it comes back at the end of the visit.
  */
 .studio-grid {
   --phone-h: calc(100cqb - var(--spacing-7) - var(--spacing-5));
+  --kiosk-w: 17.5rem;
+  --studio-gap: var(--spacing-7);
   display: grid;
-  grid-template-columns: 17.5rem calc(var(--phone-h) * 470 / 860) minmax(0, 1fr);
-  gap: var(--spacing-7);
+  grid-template-columns:
+    calc(var(--kiosk-w) + var(--studio-gap)) calc(var(--phone-h) * 470 / 860) var(--studio-gap)
+    minmax(0, 1fr);
   block-size: 100%;
   min-block-size: 0;
   transition: grid-template-columns var(--duration-slow) var(--ease-standard);
 }
 
-.studio-grid.is-connected {
-  grid-template-columns: 12.5rem calc(var(--phone-h) * 470 / 860) minmax(0, 1fr);
+.studio-grid.is-ended {
+  --kiosk-w: 13rem;
+}
+
+.studio-grid:not(.is-kiosk-hidden) .studio-robot-body {
+  --job-w: 20rem;
+}
+
+.studio-grid.is-kiosk-hidden {
+  grid-template-columns: 0rem calc(var(--phone-h) * 470 / 860) var(--studio-gap) minmax(0, 1fr);
+}
+
+.studio-kiosk {
+  grid-column: 1;
+  display: grid;
+  min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+.studio-kiosk > .panel {
+  inline-size: var(--kiosk-w);
+  transition: opacity var(--duration-medium) var(--ease-standard);
+}
+
+.studio-grid.is-kiosk-hidden .studio-kiosk > .panel {
+  opacity: 0;
+}
+
+.studio-grid > .panel-phone {
+  grid-column: 2;
+}
+
+.studio-grid > .studio-robot {
+  grid-column: 4;
 }
 
 .studio .phone-device {
@@ -1622,26 +1679,50 @@ html.page-studio {
   font-size: var(--font-size-xl);
 }
 
-/* the robot: one status line, RViz (or the web map), and a tall, legible event log */
+/*
+ * the robot: RViz (or the web map) as large as the width allows at RViz's own 16:9 (the noVNC
+ * screen is 1920 x 1080, so it fills the card without bars), the robot's job in large type beside
+ * it, and the live event log across the full width below.
+ */
 .studio-robot-body {
+  --job-w: 28rem;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(21.25rem, 42%);
+  grid-template-columns: minmax(0, 1fr) var(--job-w);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'screen status'
+    'log log';
   gap: var(--spacing-4);
   min-block-size: 0;
 }
 
 .studio-status {
-  padding: var(--spacing-3) var(--spacing-5);
+  grid-area: status;
+  display: grid;
+  align-content: stretch;
+  min-block-size: 0;
+  padding: var(--spacing-5) var(--spacing-6);
   border-radius: var(--radius-container);
   background: var(--color-background-card);
   box-shadow: var(--shadow-low);
+  overflow: hidden;
 }
 
-.studio-status .store-head {
-  min-block-size: 0;
+.robot-job {
+  block-size: 100%;
+}
+
+.robot-job .map-legend {
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  margin: auto 0 0;
+  font-size: var(--font-size-base);
+  padding-block-start: var(--spacing-2);
+  border-block-start: var(--border-width) solid var(--color-border);
 }
 
 .studio-screen {
+  grid-area: screen;
+  aspect-ratio: 16 / 9;
   position: relative;
   display: grid;
   min-block-size: 0;
@@ -1673,7 +1754,8 @@ html.page-studio {
 .rviz-loading {
   position: absolute;
   inset: 0;
-  color: var(--color-text-secondary);
+  background: var(--color-background-muted);
+  color: var(--color-text-primary);
 }
 
 .studio-map {
@@ -1703,8 +1785,19 @@ html.page-studio {
 
 /* Live events at reading size for a recording (17 px with the studio's larger root size) */
 .studio .event-log {
+  grid-area: log;
   min-block-size: 0;
   padding: var(--spacing-4) var(--spacing-5);
+}
+
+/* at most 3 rows of chips per event, so 3 or more events fit */
+.studio .decision-path {
+  max-block-size: calc(3 * (1.5em + 2 * var(--spacing-0-5) + 2 * var(--border-width)) + 2 * var(--spacing-1));
+  overflow: hidden;
+}
+
+.studio .decision {
+  line-height: 1.5;
 }
 
 .studio .event-list {
@@ -1748,14 +1841,11 @@ html.page-studio {
     padding-inline: var(--spacing-6);
   }
   .studio-grid {
-    gap: var(--spacing-5);
-    grid-template-columns: 15rem calc(var(--phone-h) * 470 / 860) minmax(0, 1fr);
-  }
-  .studio-grid.is-connected {
-    grid-template-columns: 11rem calc(var(--phone-h) * 470 / 860) minmax(0, 1fr);
+    --kiosk-w: 15rem;
+    --studio-gap: var(--spacing-5);
   }
   .studio-robot-body {
-    grid-template-rows: auto minmax(0, 1fr) minmax(16rem, 42%);
+    --job-w: 20rem;
   }
 }
 

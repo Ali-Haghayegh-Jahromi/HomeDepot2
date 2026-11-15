@@ -89,6 +89,18 @@ function decisionsFor(s: ScreenReply, prev: ScreenName | null): { text: string; 
   }
 }
 
+/** What a run that did not change the phone's screen did (the robot's "near", a refused call...). */
+function quietRun(t: Trace): string {
+  const answer = (q: string) => t.decisions.find((d) => d.question === q)?.answer
+  const near = answer('Near or arrived?')
+  if (near && near.startsWith('near'))
+    return answer('Phone still guiding to it?') === 'no'
+      ? 'Robot within 5 m, but the customer has moved on: nothing to light.'
+      : 'Robot within 5 m: n8n turns the shelf light on.'
+  if (answer('Which call is this?') === 'kiosk button') return 'New visit saved; the kiosk shows its QR code.'
+  return ''
+}
+
 export type KioskState =
   | { kind: 'idle' }
   | { kind: 'starting' }
@@ -98,6 +110,9 @@ export type KioskState =
 export type Reach = 'unknown' | 'ok' | 'down'
 
 const MAX_LOG = 80
+
+/** How long the studio shows "Visit complete" after the robot docks, before the kiosk resets. */
+export const COMPLETE_HOLD_MS = 30_000
 
 const linkFor = (session: string) => `${window.location.origin}/demo/phone.html?s=${session}`
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]']
@@ -195,7 +210,7 @@ export function useStage() {
       lastExecution.current = t.execution_id
       say(
         'n8n',
-        text,
+        text || quietRun(t),
         undefined,
         t.decisions.map((d) => [d.question, d.answer] as Decision),
         { execution: t.execution_id },
@@ -232,7 +247,7 @@ export function useStage() {
       if (startTrace) traceSeen.current = true
       lastExecution.current = startTrace?.execution_id ?? null
       setFlow('start')
-      say('kiosk', `Help button pressed. Visit ${id} started and the QR code is on screen.`, 'POST /help/start')
+      say('kiosk', 'Help button pressed. A new visit started and its QR code is on the kiosk.', 'POST /help/start')
     } catch (e) {
       if (e instanceof NetworkError) setReach((x) => ({ ...x, n8n: 'down' }))
       const message =
@@ -271,10 +286,13 @@ export function useStage() {
           if (r.state === 'waiting_for_pick')
             say('robot', 'Arrived at the shelf and told n8n.', '/robot/event arrived')
           if (r.state === 'returning_home') say('robot', 'Visit over. Heading back to the dock.', 'POST /tour/done')
-          if (r.state === 'done') {
+          // only after a drive home: a robot that was already docked says nothing (no duplicate)
+          if (r.state === 'done' && lastState.current === 'returning_home') {
             say('robot', 'Back on the dock beside the kiosk.', '/robot/event home')
-            if (lastScreen.current === 'finished' || lastScreen.current === 'timed_out') setFlow('home')
           }
+        }
+        if (r.state === 'done' && (lastScreen.current === 'finished' || lastScreen.current === 'timed_out')) {
+          setFlow((f) => (f === 'finished' ? 'home' : f))
         }
         lastState.current = r.state
       }
@@ -294,12 +312,14 @@ export function useStage() {
     }
   }, 400)
 
-  // Back to the kiosk's start screen a few seconds after the robot docks at the end of a visit.
+  // "Visit complete": once the robot docks at the end of a visit, the studio holds the finished
+  // picture (every step done, the kiosk thanking the customer) for the closing line of the video,
+  // then goes back to the kiosk's start screen. A kiosk press meanwhile starts the next visit at once.
   useEffect(() => {
     if (flow !== 'home') return
     const t = window.setTimeout(() => {
       if (lastScreen.current === 'finished' || lastScreen.current === 'timed_out') resetKiosk()
-    }, 8000)
+    }, COMPLETE_HOLD_MS)
     return () => window.clearTimeout(t)
   }, [flow, resetKiosk])
 
@@ -403,8 +423,26 @@ export function useStage() {
 
   /** The customer is past the QR code: their phone is live on the mirror, or the visit has moved on. */
   const connected = kiosk.kind === 'visit' && (phoneLive || (!!phone && phone.screen !== 'input'))
+  /** The visit is over (repair steps on the phone, or timed out): the robot drives home, then "complete". */
+  const visitEnded = kiosk.kind === 'visit' && ended
+  const complete = visitEnded && flow === 'home'
 
-  return { kiosk, session, phone, robot, health, reach, flow, log, pressHelp, resetKiosk, mirrorChanged, connected }
+  return {
+    kiosk,
+    session,
+    phone,
+    robot,
+    health,
+    reach,
+    flow,
+    log,
+    pressHelp,
+    resetKiosk,
+    mirrorChanged,
+    connected,
+    visitEnded,
+    complete,
+  }
 }
 
 export type Stage = ReturnType<typeof useStage>

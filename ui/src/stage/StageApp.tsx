@@ -12,6 +12,7 @@ import { Spinner } from '@astryxdesign/core/Spinner'
 import { StackItem } from '@astryxdesign/core/Stack'
 import { StatusDot } from '@astryxdesign/core/StatusDot'
 import { Text } from '@astryxdesign/core/Text'
+import { Tooltip } from '@astryxdesign/core/Tooltip'
 import { VStack } from '@astryxdesign/core/VStack'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import {
@@ -30,6 +31,7 @@ import type { StoreLayout, TourStatus } from '../shared/types'
 import { useStoreLayout } from '../shared/useRobot'
 import { ACTS, FLOW_ORDER, type FlowKey } from './flow'
 import { QrCode } from './QrCode'
+import { MAX_CHIPS, splitDecisions } from './decisions'
 import { executionUrl, useStage, type Actor, type LogEntry, type Reach, type Stage } from './useStage'
 
 // ---------------------------------------------------------------------------------------------- top bar
@@ -124,10 +126,11 @@ function TopBar({ st }: { st: Stage }) {
 
 // ---------------------------------------------------------------------------------------------- story strip
 
-export function StoryStrip({ flow }: { flow: FlowKey | null }) {
-  const at = flow ? FLOW_ORDER.indexOf(flow) : -1
+export function StoryStrip({ flow, complete }: { flow: FlowKey | null; complete?: boolean }) {
+  // "Visit complete" (the robot is back on its dock): every step done
+  const at = complete ? FLOW_ORDER.length : flow ? FLOW_ORDER.indexOf(flow) : -1
   return (
-    <nav className="story" aria-label="Where the visit is in the flow">
+    <nav className={complete ? 'story is-complete' : 'story'} aria-label="Where the visit is in the flow">
       <ol className="story-acts">
         {ACTS.map((act, ai) => {
           const keys = act.steps.map((s) => FLOW_ORDER.indexOf(s.key))
@@ -145,7 +148,7 @@ export function StoryStrip({ flow }: { flow: FlowKey | null }) {
                     {act.title}
                   </Text>
                   <Text type="supporting" maxLines={1}>
-                    {act.caption}
+                    {complete && ai === ACTS.length - 1 ? 'Visit complete · robot back on its dock' : act.caption}
                   </Text>
                 </VStack>
               </HStack>
@@ -267,7 +270,22 @@ export function Kiosk({ st, docked, isStudio }: { st: Stage; docked: boolean; is
               <Text className="kiosk-muted">Starting your visit…</Text>
             </VStack>
           )}
-          {k.kind === 'visit' && st.connected && (
+          {k.kind === 'visit' && st.visitEnded && (
+            <VStack gap={3} hAlign="center" className="kiosk-screen is-connected" role="status">
+              <span className="kiosk-connected-mark" aria-hidden>
+                <Icon icon={CheckIcon} color="inherit" size="lg" />
+              </span>
+              <Heading level={2} justify="center" color="inherit" textWrap="balance">
+                {st.complete ? 'Visit complete' : 'Thanks!'}
+              </Heading>
+              <Text as="p" justify="center" className="kiosk-muted" textWrap="balance">
+                {st.complete
+                  ? 'The robot is back on its dock, ready for the next customer.'
+                  : 'The robot is heading back to its dock.'}
+              </Text>
+            </VStack>
+          )}
+          {k.kind === 'visit' && st.connected && !st.visitEnded && (
             <VStack gap={3} hAlign="center" className="kiosk-screen is-connected" role="status">
               <span className="kiosk-connected-mark" aria-hidden>
                 <Icon icon={CheckIcon} color="inherit" size="lg" />
@@ -278,11 +296,13 @@ export function Kiosk({ st, docked, isStudio }: { st: Stage; docked: boolean; is
               <Text as="p" justify="center" className="kiosk-muted" textWrap="balance">
                 {docked || !st.robot || st.robot.state === 'idle'
                   ? 'Robot ready. The visit continues on their phone.'
-                  : 'The robot is guiding them. The visit continues on their phone.'}
+                  : st.robot.state === 'returning_home'
+                    ? 'The robot is heading back to its dock.'
+                    : 'The robot is guiding them. The visit continues on their phone.'}
               </Text>
             </VStack>
           )}
-          {k.kind === 'visit' && !st.connected && (
+          {k.kind === 'visit' && !st.connected && !st.visitEnded && (
             <VStack gap={3} hAlign="center" className="kiosk-screen">
               <Heading level={2} justify="center" color="inherit">
                 Scan to start
@@ -491,6 +511,40 @@ const ACTOR: Record<Actor, { label: string; variant: 'orange' | 'blue' | 'green'
   light: { label: 'Light', variant: 'teal' },
 }
 
+/** n8n's decisions of one run: the business ones as chips, the guards folded into "✓ N checks passed". */
+function DecisionChips({ e }: { e: LogEntry }) {
+  const all = e.decisions ?? []
+  const { shown, checks } = e.inferred ? { shown: all, checks: [] } : splitDecisions(all)
+  if (!shown.length && !checks.length) return null
+  return (
+    <span
+      className={e.inferred ? 'decision-path is-inferred' : 'decision-path'}
+      aria-label={e.inferred ? 'Decisions read off the phone screen' : 'n8n decisions'}
+      title={e.inferred ? 'Read off the phone screen (this workflow does not report its trace)' : undefined}
+    >
+      {shown.slice(0, MAX_CHIPS).map(([node, branch], i) => (
+        <span key={node + i} className="decision">
+          <span className="decision-node">{node}</span>
+          <span className="decision-branch">{branch}</span>
+        </span>
+      ))}
+      {checks.length > 0 && (
+        <Tooltip
+          content={`Also checked: ${checks.map(([node, branch]) => `${node} ${branch}`).join(' · ')}`}
+          placement="below"
+        >
+          <span className="decision is-checks" tabIndex={0}>
+            <span className="decision-node">
+              <Icon icon={CheckIcon} size="xsm" color="inherit" />
+              {checks.length} {checks.length === 1 ? 'check' : 'checks'} passed
+            </span>
+          </span>
+        </Tooltip>
+      )}
+    </span>
+  )
+}
+
 export function EventLog({ log }: { log: LogEntry[] }) {
   return (
     <section className="event-log" aria-labelledby="log-title">
@@ -513,20 +567,7 @@ export function EventLog({ log }: { log: LogEntry[] }) {
               </Text>
               <Badge label={ACTOR[e.actor].label} variant={ACTOR[e.actor].variant} />
               <VStack gap={1}>
-                {e.decisions && e.decisions.length > 0 && (
-                  <span
-                    className={e.inferred ? 'decision-path is-inferred' : 'decision-path'}
-                    aria-label={e.inferred ? 'Decisions read off the phone screen' : 'n8n decisions'}
-                    title={e.inferred ? 'Read off the phone screen (this workflow does not report its trace)' : undefined}
-                  >
-                    {e.decisions.map(([node, branch], i) => (
-                      <span key={node + i} className="decision">
-                        <span className="decision-node">{node}</span>
-                        <span className="decision-branch">{branch}</span>
-                      </span>
-                    ))}
-                  </span>
-                )}
+                <DecisionChips e={e} />
                 {(e.text || e.call || e.execution) && (
                   <Text>
                     {e.text}
@@ -567,9 +608,9 @@ export function headline(robot: TourStatus | null, docked: boolean): string {
   const item = robot.current_item
   switch (robot.state) {
     case 'navigating':
-      return item ? `Guiding to aisle ${item.aisle}, bay ${item.shelf}` : 'Driving'
+      return item ? `Guiding to Aisle ${item.aisle} · Bay ${item.shelf}` : 'Driving'
     case 'waiting_for_pick':
-      return item ? `At the shelf: aisle ${item.aisle}, bay ${item.shelf}` : 'Waiting at the shelf'
+      return item ? `At the shelf: Aisle ${item.aisle} · Bay ${item.shelf}` : 'Waiting at the shelf'
     case 'returning_home':
       return 'Returning to the dock'
     case 'done':
@@ -583,7 +624,7 @@ export function headline(robot: TourStatus | null, docked: boolean): string {
   }
 }
 
-const STATE_LABEL: Record<string, string> = {
+export const STATE_LABEL: Record<string, string> = {
   idle: 'Idle',
   navigating: 'Navigating',
   waiting_for_pick: 'Waiting for pick',
@@ -697,7 +738,7 @@ export function StageApp() {
   return (
     <div className="stage">
       <TopBar st={st} />
-      <StoryStrip flow={st.flow} />
+      <StoryStrip flow={st.flow} complete={st.complete} />
       <main className="stage-main">
         <Kiosk st={st} docked={docked} />
         <PhoneFrame session={st.session} onLiveChange={st.mirrorChanged} />

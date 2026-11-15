@@ -3,6 +3,7 @@
 // top view of the store (the noVNC page of the robot container, port HD_RVIZ_PORT on the same
 // host) or the web store map, the robot's status and the live event log, under the story strip.
 import { useCallback, useEffect, useState } from 'react'
+import { Badge } from '@astryxdesign/core/Badge'
 import { Button } from '@astryxdesign/core/Button'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Heading } from '@astryxdesign/core/Heading'
@@ -18,6 +19,7 @@ import { BrandMark } from '../shared/BrandMark'
 import { useRuntime, type Runtime } from '../shared/runtime'
 import { StoreMap } from '../shared/StoreMap'
 import { useStoreLayout } from '../shared/useRobot'
+import { shortItemName } from '../shared/names'
 import {
   EventLog,
   headline,
@@ -27,10 +29,10 @@ import {
   NewVisit,
   PanelTitle,
   PhoneFrame,
-  StoreHead,
+  STATE_LABEL,
   StoryStrip,
 } from './StageApp'
-import { useStage } from './useStage'
+import { useStage, type Stage } from './useStage'
 
 type Reachable = 'checking' | 'yes' | 'no' | 'off'
 
@@ -78,9 +80,12 @@ function RvizView({ url }: { url: string }) {
   return (
     <div className="rviz-view">
       {!loaded && (
-        <VStack gap={3} hAlign="center" vAlign="center" className="rviz-loading">
-          <Spinner size="lg" shade="onMedia" label="Connecting to RViz" />
-          <Text className="kiosk-muted">Connecting to RViz…</Text>
+        <VStack gap={3} hAlign="center" vAlign="center" className="rviz-loading" role="status">
+          <Spinner size="xl" aria-label="Connecting to RViz" />
+          <Text type="large" weight="semibold">
+            Connecting to RViz…
+          </Text>
+          <Text type="supporting">The robot's live view of the store</Text>
         </VStack>
       )}
       <iframe
@@ -94,6 +99,55 @@ function RvizView({ url }: { url: string }) {
   )
 }
 
+/**
+ * The robot's current job in large type, under RViz: where it is going, for which item, how far,
+ * and the shelf light, with the legend of RViz's picture.
+ */
+function RobotJob({ st, docked }: { st: Stage; docked: boolean }) {
+  const r = st.robot
+  const item = r?.current_item ?? null
+  const light = !!item && !!r?.lights_on.includes(item.tag_code)
+  const moving = r?.state === 'navigating' || r?.state === 'returning_home'
+  const name = item ? item.short_name || shortItemName(item.name) : null
+  return (
+    <VStack gap={3} className="robot-job">
+      <HStack gap={2} vAlign="center" wrap="wrap">
+        <Text type="label" color="secondary">
+          Guide robot
+        </Text>
+        <Badge
+          label={STATE_LABEL[r?.state ?? 'idle'] ?? r?.state ?? 'Idle'}
+          variant={moving ? 'orange' : r?.state === 'waiting_for_pick' ? 'green' : 'neutral'}
+        />
+        {r?.state === 'navigating' && r.distance_m != null && (
+          <Badge label={`${r.distance_m.toFixed(1)} m to go`} variant="neutral" />
+        )}
+        <Badge
+          label={light ? `Shelf light on · ${item?.tag_code}` : 'Shelf light off'}
+          variant={light ? 'success' : 'neutral'}
+        />
+      </HStack>
+      <Heading level={3} type="display-3" aria-live="polite" textWrap="balance">
+        {st.complete
+          ? 'Back on its dock'
+          : st.kiosk.kind !== 'visit' && docked
+            ? 'Waiting at its dock'
+            : headline(r, docked)}
+      </Heading>
+      <Text type="large" color="secondary" maxLines={2}>
+        {item && name
+          ? `${name} · item ${r?.index} of ${r?.total}`
+          : st.visitEnded
+            ? st.complete
+              ? 'Visit complete. The repair steps are on the customer’s phone.'
+              : 'Visit finished. The repair steps are on the customer’s phone.'
+            : 'Nav2 drives it; n8n turns the shelf lights on and off.'}
+      </Text>
+      <MapLegend />
+    </VStack>
+  )
+}
+
 export function StudioApp() {
   const st = useStage()
   const { layout, failed, retry } = useStoreLayout()
@@ -103,6 +157,17 @@ export function StudioApp() {
   const [choice, setChoice] = useState<'rviz' | 'map'>('rviz')
   const docked = isDocked(st.robot, layout)
   const showRviz = choice === 'rviz' && reach === 'yes' && !!url
+  // once the customer has scanned the code the kiosk folds away and RViz takes its width; it comes
+  // back at the end of the visit to thank them ("Visit complete")
+  const kioskShown = !st.connected || st.visitEnded
+  const gridClass = [
+    'studio-grid',
+    st.connected && 'is-connected',
+    st.visitEnded && 'is-ended',
+    !kioskShown && 'is-kiosk-hidden',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   useEffect(() => {
     document.documentElement.classList.add('page-studio')
@@ -138,12 +203,14 @@ export function StudioApp() {
             </Text>
           </VStack>
         </HStack>
-        <StoryStrip flow={st.flow} />
+        <StoryStrip flow={st.flow} complete={st.complete} />
         {st.kiosk.kind === 'visit' && <NewVisit st={st} isCompact />}
       </header>
       <main className="studio-main">
-        <div className={st.connected ? 'studio-grid is-connected' : 'studio-grid'}>
-          <Kiosk st={st} docked={docked} isStudio />
+        <div className={gridClass}>
+          <div className="studio-kiosk" inert={!kioskShown}>
+            <Kiosk st={st} docked={docked} isStudio />
+          </div>
           <PhoneFrame session={st.session} onLiveChange={st.mirrorChanged} />
           <section className="panel studio-robot" aria-labelledby="robot-title">
             <PanelTitle
@@ -167,9 +234,6 @@ export function StudioApp() {
               }
             />
             <div className="studio-robot-body">
-              <section className="studio-status" aria-label="The guide robot">
-                <StoreHead st={st} docked={docked} />
-              </section>
               <div className={showRviz ? 'studio-screen is-rviz' : 'studio-screen'}>
                 {showRviz ? (
                   <RvizView url={url} />
@@ -203,6 +267,9 @@ export function StudioApp() {
                   map
                 )}
               </div>
+              <section className="studio-status" aria-label="The guide robot">
+                <RobotJob st={st} docked={docked} />
+              </section>
               <EventLog log={st.log} />
             </div>
           </section>
