@@ -52,6 +52,11 @@ body {
   block-size: 100%;
 }
 
+/* the mirror, scrolled: the line the top edge cuts fades out under the header (MirrorView.tsx) */
+.mirror-scroll.is-scrolled {
+  mask-image: linear-gradient(to bottom, transparent, var(--color-on-dark) var(--spacing-8));
+}
+
 .nowrap {
   white-space: nowrap;
 }
@@ -271,7 +276,7 @@ body {
     'tile name price'
     'tile spec spec'
     'tile reason reason'
-    'meta meta mark';
+    'foot foot foot';
   column-gap: var(--spacing-3);
   row-gap: var(--spacing-1);
   align-items: start;
@@ -304,16 +309,29 @@ body {
   grid-area: spec;
 }
 
+/* the price has its own column, right-aligned: picking an item (a wider "1st stop") never moves it */
 .item-row-price {
   grid-area: price;
+  justify-self: end;
+  text-align: end;
+  white-space: nowrap;
 }
 
 .item-row-reason {
   grid-area: reason;
 }
 
+.item-row-foot {
+  grid-area: foot;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  min-inline-size: 0;
+  padding-block-start: var(--spacing-1);
+}
+
 .item-row-meta {
-  grid-area: meta;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -321,15 +339,8 @@ body {
   min-inline-size: 0;
 }
 
-.item-row > .pick-mark {
-  grid-area: mark;
-  justify-self: end;
-  align-self: center;
-}
-
-.item-row-meta {
-  align-self: center;
-  padding-block-start: var(--spacing-1);
+.item-row-foot > .pick-mark {
+  flex: none;
 }
 
 .clamp-1,
@@ -402,6 +413,16 @@ body {
   box-shadow: none;
   color: var(--color-on-accent);
   animation: pop var(--duration-medium) var(--ease-entrance);
+}
+
+/* a success eyebrow ("All items collected") in the robot's green, under the green check */
+.text-success {
+  color: var(--color-text-success);
+}
+
+/* after a "sorry" (no photo sent yet): the photo is the big way in again, under the message */
+.photo-prompt {
+  padding-block-start: var(--spacing-2);
 }
 
 /* "Anything else?": the collected items read as a list, left-aligned, in the centred screen */
@@ -882,7 +903,7 @@ body {
   background: var(--color-background-muted);
 }
 
-/* story strip: problem → AI → robot → wrap-up */
+/* story strip: the phone's own four steps, Describe → Choose → Find → Wrap up */
 
 .story {
   padding: var(--spacing-3) var(--spacing-6);
@@ -890,9 +911,10 @@ body {
   border-block-end: var(--border-width) solid var(--color-border);
 }
 
+/* the widths follow the steps each part holds ("Choose" has one, "Wrap up" three wide ones) */
 .story-acts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.8fr) minmax(0, 0.85fr) minmax(0, 1.1fr);
   gap: var(--spacing-3);
   margin: 0;
   padding: 0;
@@ -1651,7 +1673,7 @@ html.page-studio {
 
 .studio-kiosk > .panel {
   inline-size: var(--kiosk-w);
-  transition: opacity var(--duration-medium) var(--ease-standard);
+  transition: opacity var(--duration-slow) var(--ease-standard);
 }
 
 .studio-grid.is-kiosk-hidden .studio-kiosk > .panel {
@@ -1688,6 +1710,8 @@ html.page-studio {
   --job-w: 28rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--job-w);
+  /* the kiosk folding away and coming back at the end: one calm motion with the grid around it */
+  transition: grid-template-columns var(--duration-slow) var(--ease-standard);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     'screen status'
@@ -1710,6 +1734,32 @@ html.page-studio {
 
 .robot-job {
   block-size: 100%;
+}
+
+/* the countdown in display type: orange while driving, green once the shelf tag is lit */
+.robot-countdown {
+  padding: var(--spacing-4) var(--spacing-5);
+  border-radius: var(--radius-container);
+  background: var(--color-accent-muted);
+  color: var(--color-text-primary);
+  transition:
+    background-color var(--duration-medium) var(--ease-standard),
+    box-shadow var(--duration-medium) var(--ease-standard);
+}
+
+.robot-countdown-big {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.robot-countdown.is-lit {
+  background: var(--color-success-muted);
+  color: var(--color-on-success-muted);
+  box-shadow: 0 0 0 var(--focus-outline-width) var(--color-success);
+}
+
+.robot-countdown.is-home {
+  background: var(--color-background-muted);
 }
 
 .robot-job .map-legend {

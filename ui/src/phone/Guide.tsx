@@ -199,7 +199,7 @@ export function GuideFooter({ s }: { s: PhoneSession }) {
     return (
       <HStack gap={2} vAlign="center" hAlign="center" className="guide-hint">
         <Icon icon={CheckCircleIcon} size="sm" color="secondary" />
-        <Text type="supporting">"I am done" appears when you reach the shelf.</Text>
+        <Text type="supporting">“I am done” appears when you reach the shelf.</Text>
       </HStack>
     )
   }

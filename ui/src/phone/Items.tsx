@@ -141,7 +141,7 @@ function ItemRow({
       data-anchor={'i-' + item.sku}
     >
       <DepartmentTile item={item} />
-      <Text weight="semibold" as="span" className="item-row-name clamp-1">
+      <Text weight="semibold" as="span" className="item-row-name clamp-2">
         {itemTitle(item)}
       </Text>
       {spec && (
@@ -153,17 +153,20 @@ function ItemRow({
         {money(item.price)}
       </Text>
       {item.reason && (
-        <Text type="supporting" as="span" className="item-row-reason clamp-1">
+        <Text type="supporting" as="span" className="item-row-reason clamp-2">
           {item.reason}
         </Text>
       )}
-      <span className="item-row-meta">
-        <Badge label={`Aisle ${item.aisle} · Bay ${item.shelf}`} variant="neutral" />
-        {tier && <Badge label={tier.label} variant={tier.variant} />}
-      </span>
-      <span className={picked ? 'pick-mark is-on' : 'pick-mark'}>
-        <Icon icon={picked ? CheckIcon : isAlternative ? ArrowsRightLeftIcon : PlusIcon} size="sm" color="inherit" />
-        {picked ? `${ordinal(order)} stop` : isAlternative ? 'Choose instead' : 'Add'}
+      {/* where it is and the pick control share their own row, so the price column never moves */}
+      <span className="item-row-foot">
+        <span className="item-row-meta">
+          <Badge label={`Aisle ${item.aisle} · Bay ${item.shelf}`} variant="neutral" />
+          {tier && <Badge label={tier.label} variant={tier.variant} />}
+        </span>
+        <span className={picked ? 'pick-mark is-on' : 'pick-mark'}>
+          <Icon icon={picked ? CheckIcon : isAlternative ? ArrowsRightLeftIcon : PlusIcon} size="sm" color="inherit" />
+          {picked ? `${ordinal(order)} stop` : isAlternative ? 'Choose instead' : 'Add'}
+        </span>
       </span>
     </button>
   )
@@ -347,12 +350,12 @@ export function ItemsFooter({ s }: { s: PhoneSession }) {
                   ? s.swapNote
                   : !n
                     ? s.budget != null
-                      ? `Budget ${money(s.budget)} · nothing added yet`
+                      ? `Budget ${money(s.budget, true)} · nothing added yet`
                       : 'Add what you need, in pick-up order'
                     : s.budget != null
                       ? over
-                        ? `${money(total - s.budget)} over your ${money(s.budget)} budget`
-                        : `${money(s.budget - total)} left of your ${money(s.budget)} budget`
+                        ? `${money(total - s.budget)} over your ${money(s.budget, true)} budget`
+                        : `${money(s.budget - total)} left of your ${money(s.budget, true)} budget`
                       : 'Prices before tax'}
             </Text>
           </VStack>

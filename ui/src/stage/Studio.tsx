@@ -29,6 +29,7 @@ import {
   NewVisit,
   PanelTitle,
   PhoneFrame,
+  robotHeadline,
   STATE_LABEL,
   StoryStrip,
 } from './StageApp'
@@ -100,13 +101,48 @@ function RvizView({ url }: { url: string }) {
 }
 
 /**
+ * How far the robot still has to go, in display type (the phone's "12 m to go", side by side with
+ * RViz's 5 m ring): orange while driving, green once n8n has lit the shelf tag, "At the shelf" on arrival.
+ */
+function Countdown({ st }: { st: Stage }) {
+  const r = st.robot
+  const item = r?.current_item ?? null
+  const light = !!item && !!r?.lights_on.includes(item.tag_code)
+  const lightText = item ? `Shelf light on · ${item.tag_code}` : ''
+  let big: string | null = null
+  let small = ''
+  if (r?.state === 'navigating' && item) {
+    const d = r.distance_m
+    big = d == null ? 'Starting…' : d < 1 ? 'Almost there' : `${Math.round(d)} m to go`
+    small = light ? lightText : 'The shelf light turns on within 5 m'
+  } else if (r?.state === 'waiting_for_pick' && item) {
+    big = 'At the shelf'
+    small = light ? lightText : `Aisle ${item.aisle} · Bay ${item.shelf}`
+  } else if (r?.state === 'returning_home') {
+    big = 'Driving home'
+    small = 'Back to its dock beside the kiosk'
+  }
+  if (!big) return null
+  const tone = light ? 'is-lit' : r?.state === 'returning_home' ? 'is-home' : ''
+  return (
+    <VStack gap={1} className={`robot-countdown ${tone}`} aria-live="polite">
+      <Heading level={4} type="display-2" color="inherit" className="robot-countdown-big">
+        {big}
+      </Heading>
+      <Text type="large" weight="semibold" color="inherit">
+        {small}
+      </Text>
+    </VStack>
+  )
+}
+
+/**
  * The robot's current job in large type, under RViz: where it is going, for which item, how far,
  * and the shelf light, with the legend of RViz's picture.
  */
 function RobotJob({ st, docked }: { st: Stage; docked: boolean }) {
   const r = st.robot
   const item = r?.current_item ?? null
-  const light = !!item && !!r?.lights_on.includes(item.tag_code)
   const moving = r?.state === 'navigating' || r?.state === 'returning_home'
   const name = item ? item.short_name || shortItemName(item.name) : null
   return (
@@ -119,20 +155,9 @@ function RobotJob({ st, docked }: { st: Stage; docked: boolean }) {
           label={STATE_LABEL[r?.state ?? 'idle'] ?? r?.state ?? 'Idle'}
           variant={moving ? 'orange' : r?.state === 'waiting_for_pick' ? 'green' : 'neutral'}
         />
-        {r?.state === 'navigating' && r.distance_m != null && (
-          <Badge label={`${r.distance_m.toFixed(1)} m to go`} variant="neutral" />
-        )}
-        <Badge
-          label={light ? `Shelf light on · ${item?.tag_code}` : 'Shelf light off'}
-          variant={light ? 'success' : 'neutral'}
-        />
       </HStack>
       <Heading level={3} type="display-3" aria-live="polite" textWrap="balance">
-        {st.complete
-          ? 'Back on its dock'
-          : st.kiosk.kind !== 'visit' && docked
-            ? 'Waiting at its dock'
-            : headline(r, docked)}
+        {robotHeadline(st, docked)}
       </Heading>
       <Text type="large" color="secondary" maxLines={2}>
         {item && name
@@ -143,6 +168,7 @@ function RobotJob({ st, docked }: { st: Stage; docked: boolean }) {
               : 'Visit finished. The repair steps are on the customer’s phone.'
             : 'Nav2 drives it; n8n turns the shelf lights on and off.'}
       </Text>
+      <Countdown st={st} />
       <MapLegend />
     </VStack>
   )
@@ -211,7 +237,7 @@ export function StudioApp() {
           <div className="studio-kiosk" inert={!kioskShown}>
             <Kiosk st={st} docked={docked} isStudio />
           </div>
-          <PhoneFrame session={st.session} onLiveChange={st.mirrorChanged} />
+          <PhoneFrame session={st.session} connected={st.connected} onLiveChange={st.mirrorChanged} />
           <section className="panel studio-robot" aria-labelledby="robot-title">
             <PanelTitle
               n={3}

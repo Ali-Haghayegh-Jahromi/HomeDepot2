@@ -63,9 +63,16 @@ interface MirrorContextValue {
   view: ComposerView | null
   /** Set on a publishing phone: the composer reports what it shows. */
   report: ((v: ComposerView | null) => void) | null
+  /** What the composer shows right now (the phone's own draft, or the mirrored one), for the screen around it. */
+  shown?: ComposerView | null
 }
 
 export const MirrorContext = createContext<MirrorContextValue>({ view: null, report: null })
+/** Whether the message box holds a photo that is not sent yet (on the phone or on the mirror). */
+export const useDraftHasPhoto = () => {
+  const c = useContext(MirrorContext)
+  return !!(c.view ?? c.shown)?.photo
+}
 export const useMirrorComposer = () => useContext(MirrorContext)
 
 // ------------------------------------------------------------------ who publishes
@@ -135,14 +142,23 @@ export function scrollArea(): HTMLElement | null {
 /** Where the scroll area is now (the phone side). */
 export function scrollPlace(el: HTMLElement): ScrollPlace {
   if (el.scrollTop <= 2) return { edge: 'top', anchor: null, offset: 0 }
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) return { edge: 'bottom', anchor: null, offset: 0 }
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2
   const top = el.getBoundingClientRect().top
-  let best: { id: string; y: number } | null = null
+  const half = el.clientHeight / 2
+  let below: { id: string; y: number } | null = null // the first block that starts in the top half
+  let above: { id: string; y: number } | null = null // else: the last block that starts above the top edge
   for (const a of el.querySelectorAll<HTMLElement>('[data-anchor]')) {
     const y = a.getBoundingClientRect().top - top
-    // the last block that starts at or above the top edge (blocks are in reading order)
-    if (y <= 1 && (!best || y >= best.y)) best = { id: a.dataset.anchor ?? '', y }
+    const id = a.dataset.anchor ?? ''
+    if (y >= -1 && y <= half && (!below || y < below.y)) below = { id, y }
+    if (y < -1 && (!above || y >= above.y)) above = { id, y }
   }
+  // Anchoring on the first block that starts on screen puts the same block at the same place on
+  // the mirror; a block cut by the top edge would show a different slice of itself there (its text
+  // wraps differently), and the header would cut through it.
+  const best = below ?? above
+  // a phone scrolled to its very end stays pinned to the end on the mirror (the newest message whole)
+  if (atBottom) return { edge: 'bottom', anchor: null, offset: 0 }
   return best ? { edge: null, anchor: best.id, offset: Math.round(-best.y) } : { edge: null, anchor: null, offset: 0 }
 }
 

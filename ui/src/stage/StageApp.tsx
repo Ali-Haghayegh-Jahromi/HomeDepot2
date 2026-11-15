@@ -391,17 +391,44 @@ function useMirrorLive(session: string | null, frame: React.RefObject<HTMLIFrame
   return live
 }
 
+/** The dimmed phone with a calm note on top: before a visit, and while the kiosk waits for the scan. */
+function PhoneNote({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
+  return (
+    <VStack gap={2} hAlign="center" vAlign="center" className="phone-idle" role="status">
+      <span className="phone-idle-card">
+        <VStack gap={1} hAlign="center">
+          <Text type="label" justify="center">
+            {title}
+          </Text>
+          <Text type="supporting" justify="center" textWrap="balance">
+            {text}
+          </Text>
+          {action}
+        </VStack>
+      </span>
+    </VStack>
+  )
+}
+
 export function PhoneFrame({
   session,
+  connected = false,
   onLiveChange,
 }: {
   session: string | null
+  /** The customer is past the QR code (their phone is live, or the visit has left its first screen). */
+  connected?: boolean
   onLiveChange?: (live: boolean) => void
 }) {
   const [ref, size] = useElementSize<HTMLDivElement>()
   const scale = size.width ? size.width / SCREEN_W : 0
   const mirrorFrame = useRef<HTMLIFrameElement>(null)
   const live = useMirrorLive(session, mirrorFrame)
+  // Until someone scans the code, the stage's own phone page stays dimmed under "Waiting for the
+  // customer to scan" (it is not the customer's phone). A presenter without a phone can use it.
+  const [useOwn, setUseOwn] = useState(false)
+  useEffect(() => setUseOwn(false), [session])
+  const waiting = !!session && !live && !connected && !useOwn
   const reported = useRef(false)
   useEffect(() => {
     if (live === reported.current) return
@@ -446,9 +473,10 @@ export function PhoneFrame({
                       title="The customer's phone page"
                       src={`phone.html?s=${encodeURIComponent(session)}&role=stage`}
                       allow="microphone; camera"
-                      className="phone-iframe"
+                      className={waiting ? 'phone-iframe is-preview' : 'phone-iframe'}
                       data-hidden={live || undefined}
-                      inert={live}
+                      inert={live || waiting}
+                      tabIndex={waiting ? -1 : undefined}
                       style={frameStyle}
                     />
                     {/* The live mirror of a real phone that scanned the QR code (shown while it is live). */}
@@ -462,6 +490,20 @@ export function PhoneFrame({
                       tabIndex={-1}
                       style={frameStyle}
                     />
+                    {waiting && (
+                      <PhoneNote
+                        title="Waiting for the customer to scan"
+                        text="The visit opens on their phone as soon as they scan the kiosk’s QR code."
+                        action={
+                          <Button
+                            label="Use this screen instead"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setUseOwn(true)}
+                          />
+                        }
+                      />
+                    )}
                   </>
                 )
               ) : (
@@ -476,18 +518,10 @@ export function PhoneFrame({
                       inert
                       style={frameStyle}
                     />
-                    <VStack gap={2} hAlign="center" vAlign="center" className="phone-idle" role="status">
-                      <span className="phone-idle-card">
-                        <VStack gap={1} hAlign="center">
-                          <Text type="label" justify="center">
-                            Waiting for a customer
-                          </Text>
-                          <Text type="supporting" justify="center" textWrap="balance">
-                            Press “I need help” on the kiosk and scan the QR code.
-                          </Text>
-                        </VStack>
-                      </span>
-                    </VStack>
+                    <PhoneNote
+                      title="Waiting for a customer"
+                      text="Press “I’m here, I need help” on the kiosk and scan the QR code."
+                    />
                   </>
                 )
               )}
@@ -614,14 +648,20 @@ export function headline(robot: TourStatus | null, docked: boolean): string {
     case 'returning_home':
       return 'Returning to the dock'
     case 'done':
-      return 'Back on the dock'
+      return 'Back on its dock'
     default:
-      return item
-        ? 'Waiting with the customer'
-        : docked
-          ? 'Robot waiting at its dock'
-          : 'Robot standing by in the store'
+      return item ? 'Waiting with the customer' : docked ? 'Waiting at its dock' : 'Standing by in the store'
   }
+}
+
+/**
+ * The robot's headline, the same words on the stage and the studio: "Waiting at its dock" until a
+ * visit sends it out, "Back on its dock" once a visit is complete.
+ */
+export function robotHeadline(st: Stage, docked: boolean): string {
+  if (st.complete) return 'Back on its dock'
+  if (docked && (st.kiosk.kind !== 'visit' || !st.robot?.current_item)) return 'Waiting at its dock'
+  return headline(st.robot, docked)
 }
 
 export const STATE_LABEL: Record<string, string> = {
@@ -642,7 +682,7 @@ export function StoreHead({ st, docked }: { st: Stage; docked: boolean }) {
       <StackItem size="fill">
         <VStack gap={0}>
           <Text type="large" weight="bold" aria-live="polite">
-            {headline(r, docked)}
+            {robotHeadline(st, docked)}
           </Text>
           <Text type="supporting" maxLines={2}>
             {item ? `${item.name} · item ${r?.index} of ${r?.total}` : 'Nav2 and the shelf lights, as they report it'}
@@ -741,7 +781,7 @@ export function StageApp() {
       <StoryStrip flow={st.flow} complete={st.complete} />
       <main className="stage-main">
         <Kiosk st={st} docked={docked} />
-        <PhoneFrame session={st.session} onLiveChange={st.mirrorChanged} />
+        <PhoneFrame session={st.session} connected={st.connected} onLiveChange={st.mirrorChanged} />
         <StorePanel st={st} docked={docked} layout={layout} layoutFailed={failed} retryLayout={retry} />
       </main>
     </div>

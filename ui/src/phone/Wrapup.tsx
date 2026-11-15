@@ -24,7 +24,12 @@ export function AnythingElse({ s }: { s: PhoneSession }) {
         <Icon icon={CheckIcon} color="inherit" size="lg" />
       </span>
       <VStack gap={2}>
-        <Text type="label" color="accent" justify="center">
+        <Text
+          type="label"
+          color={s.pickedItems.length ? 'inherit' : 'secondary'}
+          justify="center"
+          className={s.pickedItems.length ? 'text-success' : undefined}
+        >
           {s.pickedItems.length ? 'All items collected' : 'Your list is done'}
         </Text>
         <Heading level={1} justify="center">

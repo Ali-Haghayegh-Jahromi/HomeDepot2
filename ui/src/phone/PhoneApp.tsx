@@ -238,7 +238,7 @@ export function PhoneRoot() {
   // A real phone publishes what it shows for the stage's live mirror (mirror.ts); best-effort.
   const [composer, setComposer] = useState<ComposerView | null>(null)
   useMirrorPublisher(s, composer)
-  const mirror = useMemo(() => ({ view: null, report: setComposer }), [])
+  const mirror = useMemo(() => ({ view: null, report: setComposer, shown: composer }), [composer])
   return (
     <MirrorContext.Provider value={mirror}>
       <PhoneApp s={s} />

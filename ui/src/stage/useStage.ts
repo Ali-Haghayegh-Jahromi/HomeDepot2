@@ -247,7 +247,7 @@ export function useStage() {
       if (startTrace) traceSeen.current = true
       lastExecution.current = startTrace?.execution_id ?? null
       setFlow('start')
-      say('kiosk', 'Help button pressed. A new visit started and its QR code is on the kiosk.', 'POST /help/start')
+      say('kiosk', 'Help button pressed. A new visit started: waiting for the customer to scan its QR code.', 'POST /help/start')
     } catch (e) {
       if (e instanceof NetworkError) setReach((x) => ({ ...x, n8n: 'down' }))
       const message =
@@ -373,8 +373,6 @@ export function useStage() {
           return
         }
         const prev = lastScreen.current
-        if (s.screen === 'input' && prev !== 'anything_else')
-          say('phone', 'Phone opened. Waiting for the customer to describe the problem.', 'GET /help/status')
         const understood = (s.data?.understood ?? '').trim()
         if (understood && (s.screen === 'question' || s.screen === 'items'))
           say('ai', `The AI understood: “${understood}”`, 'AI 2: understand the need')

@@ -109,9 +109,14 @@ export function MirrorRoot() {
       const el = scrollArea()
       if (!el) return
       // the same block at the top edge as on the phone (or pinned to the top / bottom)
-      if (shown.st.at && applyScrollPlace(el, shown.st.at)) return
-      const max = el.scrollHeight - el.clientHeight
-      el.scrollTo({ top: Math.round(shown.st.scroll * Math.max(0, max)), behavior: 'auto' })
+      if (!(shown.st.at && applyScrollPlace(el, shown.st.at))) {
+        const max = el.scrollHeight - el.clientHeight
+        el.scrollTo({ top: Math.round(shown.st.scroll * Math.max(0, max)), behavior: 'auto' })
+      }
+      // scrolled: what the top edge cuts fades out under the header instead of being sliced (the
+      // mirror's screen is not exactly as tall as the phone's, so it cuts elsewhere)
+      el.classList.add('mirror-scroll')
+      el.classList.toggle('is-scrolled', el.scrollTop > 4)
     }
     const raf = window.requestAnimationFrame(apply)
     const later = window.setTimeout(apply, 350) // after a smooth auto-scroll and images

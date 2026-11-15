@@ -24,7 +24,7 @@ import {
 import { StackItem } from '@astryxdesign/core/Stack'
 import { usePrefersReducedMotion, useElapsed } from '../shared/hooks'
 import { clock, openPhotoPicker } from './media'
-import { scrollArea } from './mirror'
+import { scrollArea, useDraftHasPhoto } from './mirror'
 import type { Message, PhoneSession } from './usePhoneSession'
 
 const SUGGESTIONS = [
@@ -199,25 +199,7 @@ function Welcome({ s }: { s: PhoneSession }) {
           them.
         </Text>
       </VStack>
-      <VStack gap={2} hAlign="center">
-        <Button
-          label="Take a photo of the problem"
-          variant="primary"
-          size="lg"
-          width="100%"
-          icon={<Icon icon={CameraIcon} />}
-          isDisabled={!!s.busy}
-          onClick={() => openPhotoPicker('camera')}
-        />
-        <Button
-          label="or choose one from your photos"
-          variant="ghost"
-          size="lg"
-          icon={<Icon icon={PhotoIcon} />}
-          isDisabled={!!s.busy}
-          onClick={() => openPhotoPicker('library')}
-        />
-      </VStack>
+      <PhotoButtons s={s} />
       {!again && (
         <ol className="welcome-steps" aria-label="How it works">
           {WELCOME_STEPS.map(({ icon, text }, i) => (
@@ -232,6 +214,31 @@ function Welcome({ s }: { s: PhoneSession }) {
           ))}
         </ol>
       )}
+    </VStack>
+  )
+}
+
+/** The photo as the headline way in: the camera, or the phone's photo library. */
+function PhotoButtons({ s }: { s: PhoneSession }) {
+  return (
+    <VStack gap={2} hAlign="center">
+      <Button
+        label="Take a photo of the problem"
+        variant="primary"
+        size="lg"
+        width="100%"
+        icon={<Icon icon={CameraIcon} />}
+        isDisabled={!!s.busy}
+        onClick={() => openPhotoPicker('camera')}
+      />
+      <Button
+        label="or choose one from your photos"
+        variant="ghost"
+        size="lg"
+        icon={<Icon icon={PhotoIcon} />}
+        isDisabled={!!s.busy}
+        onClick={() => openPhotoPicker('library')}
+      />
     </VStack>
   )
 }
@@ -317,6 +324,16 @@ export function Conversation({ s }: { s: PhoneSession }) {
   const data = s.current?.data ?? {}
   const last = s.talk[s.talk.length - 1]
   const seen = useRef(-1) // how many messages were already scrolled to
+  const draftHasPhoto = useDraftHasPhoto()
+  // The photo stays the big way in while the AI still waits for a description (e.g. after "sorry")
+  // and no photo has been sent or attached yet.
+  const photoPrompt =
+    (screen === 'input' || screen === 'sorry') &&
+    s.talk.length > 0 &&
+    !s.busy &&
+    !s.composing &&
+    !draftHasPhoto &&
+    !s.talk.some((m) => m.who === 'me' && (m.photo || m.hadPhoto))
 
   // A new answer from the AI lands with its start at the top (the photo it saw, then what it
   // says); the customer's own message, and "thinking", keep the newest line in view at the end.
@@ -363,6 +380,11 @@ export function Conversation({ s }: { s: PhoneSession }) {
           )}
           {s.busy?.kind === 'request' && <Thinking since={s.busy.since} last={last} />}
         </ChatMessageList>
+      )}
+      {photoPrompt && (
+        <section aria-label="Send a photo" className="photo-prompt" data-anchor="photo-prompt">
+          <PhotoButtons s={s} />
+        </section>
       )}
       {s.talk.length === 0 && s.busy?.kind === 'request' && (
         <ChatMessageList align="top">
