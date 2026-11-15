@@ -7,7 +7,8 @@ understands nothing. Gemini calls: POST /v1beta/models/<model>:generateContent. 
 A few words in the customer's text trigger test behaviour (tools/edge_case_test.py):
   test-slow         8 s answer                     test-ai1-fails     relevancy call: HTTP 503 (every model)
   test-ai2-garbage  no JSON                        test-markdown      options inside the question
-  test-quota-first  the first model of the chain (gemini-flash-lite-latest) answers 429 (per-minute rate)
+  test-fullwidth    a question with full-width punctuation (U+FF1F)
+  test-quota-first  the first model of the chain (gemini-3.1-flash-lite) answers 429 (per-minute rate)
   test-gemini-quota every Gemini model answers 429 (daily free quota used up)
   test-gemini-busy  every Gemini model answers 503 (overloaded)
   test-claude-down  Claude answers 529 (overloaded)
@@ -34,7 +35,7 @@ class ApiError(Exception):
         self.status, self.body = status, body
 
 
-FIRST_MODEL = 'gemini-flash-lite-latest'
+FIRST_MODEL = 'gemini-3.1-flash-lite'
 
 
 def gemini_quota(model, daily):
@@ -149,6 +150,9 @@ def reply_for(body):
         time.sleep(8)
     if 'test-ai2-garbage' in new:
         return 'Sure! I can help with that. What is it made of?'
+    if 'test-fullwidth' in new:      # seen live: a question ending in a full-width question mark
+        return {'type': 'question', 'understood': 'A deck board.', 'request_title': 'Deck repair', 'budget': None,
+                'question': 'Is the deck made of wood or composite\uff1f', 'options': ['Wood\uff0c treated', 'Composite'], 'items': []}
     if 'test-markdown' in new:
         return {'type': 'question', 'understood': 'deck', 'question': 'What is the deck made of?\n- **Wood**\n- **Composite**',
                 'options': []}

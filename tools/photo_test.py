@@ -8,7 +8,8 @@ understood, what it asked and which items it picked (with their role), and how l
     python3 tools/photo_test.py --all                               every photo in tools/photos (drawn by
                                                                     tools/make_test_photos.py) and test_photos/
 
-Options: --answers "About $60|Not sure" (the replies to follow-up questions, in order; default: a budget,
+Options: --first (stop after the first reply: fewer AI calls), --answers "About $60|Not sure" (the replies
+to follow-up questions, in order; default: a budget,
 then "Not sure"), --n8n http://localhost:5678 (or HD_N8N_URL), --max-side 1024 (photos are scaled down
 like the phone does; needs Pillow, otherwise sent as they are).
 Each run is a real visit (kiosk button first): with the real AI it uses the Gemini quota, about 2-4 calls
@@ -93,7 +94,7 @@ def run(base, photo=None, audio=None, text='', answers=(), max_side=1024):
     r = call(base, 'POST', 'help/request', body)
     show('photo' if photo else 'voice', r)
     replies = list(answers) or ['About $60', 'Not sure', 'Not sure']
-    while r.get('screen') == 'question' and replies:
+    while r.get('screen') == 'question' and replies and replies[0] != '-':
         answer = replies.pop(0)
         r = call(base, 'POST', 'help/request', {'session_id': session, 'text': answer})
         show(f'answer "{answer}"', r)
@@ -107,10 +108,11 @@ def main():
     p.add_argument('--audio')
     p.add_argument('--all', action='store_true')
     p.add_argument('--answers', default='')
+    p.add_argument('--first', action='store_true', help='stop after the first reply (saves AI calls)')
     p.add_argument('--n8n', default=os.environ.get('HD_N8N_URL', 'http://localhost:5678'))
     p.add_argument('--max-side', type=int, default=1024)
     a = p.parse_args()
-    answers = [x for x in a.answers.split('|') if x]
+    answers = ['-'] if a.first else [x for x in a.answers.split('|') if x]
     if a.all:
         photos = sorted(glob.glob(os.path.join(HERE, 'photos', '*.jpg'))) + sorted(glob.glob(os.path.join(ROOT, 'test_photos', '*.jpg')))
         if not photos:

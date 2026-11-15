@@ -5,7 +5,8 @@ it uses the stand-in's test words (test-slow, test-ai1-fails, test-ai2-garbage, 
 
   1. the relevancy AI fails while a follow-up question waits -> same question, "please send it again"
   2. the main AI answers with no JSON -> same screen, "please send it again"
-  3. options written into the question text with markdown -> clean question + tap-to-answer options
+  3. options written into the question text with markdown -> clean question + tap-to-answer options;
+     full-width punctuation ("？") -> plain ASCII, not rejected
   4. a negative budget -> 400
   5. /help/confirm with SKUs that were not suggested -> 400, or left out with a note
   6. "near" and "arrived" handled at the same time -> the phone ends on "arrived" with the light on
@@ -42,6 +43,7 @@ import urllib.request
 N8N = os.environ.get('HD_N8N_URL', 'http://localhost:5678').rstrip('/') + '/webhook'
 ROBOT = os.environ.get('HD_ROBOT_URL', 'http://localhost:8000').rstrip('/')
 PG = os.environ.get('HD_PG_CONTAINER', 'hd_postgres')
+FIRST_MODEL = 'gemini-3.1-flash-lite'      # the first model of Config.gemini_models (the stand-in's test-quota-first)
 EXPECT_CLAUDE = os.environ.get('HD_EXPECT_CLAUDE', 'yes').lower() not in ('no', '0', 'false')
 FAILED = []
 PHOTO = base64.b64encode(b'\xff\xd8\xff\xe0 stand-in photo bytes (the stand-in AI does not decode them)').decode()
@@ -145,18 +147,18 @@ def model_chain_cases():
     t0 = time.time()
     r = post('help/request', {'session_id': s5, 'text': 'test-quota-first my toilet keeps running'})
     calls = ai_calls(s5, mark)
-    first = [c for c in calls if c['event'] == 'ai_call' and c['d'].get('model') == 'gemini-flash-lite-latest']
+    first = [c for c in calls if c['event'] == 'ai_call' and c['d'].get('model') == FIRST_MODEL]
     check('answered by the next model', r.get('screen') == 'question' and not r['data'].get('retry'), r)
     check('the first model failed with quota', bool(first) and first[0]['d'].get('failure') == 'quota', calls)
     check('the next Gemini model answered', any(c['event'] == 'ai_call' and c['d'].get('ok') and c['d'].get('provider') == 'gemini'
-                                                 and c['d'].get('model') != 'gemini-flash-lite-latest' for c in calls), calls)
-    resting = sql("select reason from ai_model_status where model = 'gemini-flash-lite-latest' and resting_until > now()")
+                                                 and c['d'].get('model') != FIRST_MODEL for c in calls), calls)
+    resting = sql(f"select reason from ai_model_status where model = '{FIRST_MODEL}' and resting_until > now()")
     check('the first model rests (ai_model_status)', resting == 'quota', resting)
     mark = last_log_id()
     r = post('help/request', {'session_id': s5, 'text': 'about $40'})
     calls = ai_calls(s5, mark)
     check('a later call skips the resting model', r.get('screen') == 'items'
-          and not any(c['d'].get('model') == 'gemini-flash-lite-latest' for c in calls if c['event'] == 'ai_call'), calls)
+          and not any(c['d'].get('model') == FIRST_MODEL for c in calls if c['event'] == 'ai_call'), calls)
     check('items carry "understood" and a valid role', bool(r.get('data', {}).get('understood'))
           and all(i.get('role') in ('main', 'alternative', 'tool') for i in r['data'].get('items', [])), r.get('data'))
     sql('delete from ai_model_status')
@@ -251,6 +253,9 @@ def model_chain_cases():
     budgeted = round(sum(i['price'] for i in items if i['role'] != 'alternative'), 2)
     check('the log counts main items + tools against the budget', bool(entry) and entry[-1].get('items_total_budgeted') == budgeted,
           (entry[-1] if entry else None, budgeted))
+    left_out = entry[-1].get('left_out_for_budget') if entry else None
+    check('over the budget: the costliest tools left out, and the message says so', budgeted <= 60 and (not left_out
+          or ('left out' in r.get('message', '') and not any(i['sku'] in left_out for i in items))), (budgeted, left_out, r.get('message')))
 
 
 def main():
@@ -270,6 +275,9 @@ def main():
     r = post('help/request', {'session_id': s1, 'text': 'test-markdown about $40'})
     check('markdown question cleaned', r.get('screen') == 'question' and r['data'].get('question') == 'What is the deck made of?'
           and r['data'].get('options') == ['Wood', 'Composite'], r)
+    r = post('help/request', {'session_id': s1, 'text': 'test-fullwidth about $40'})
+    check('full-width "？" in a question: shown with a plain "?"', r.get('screen') == 'question' and not r['data'].get('retry')
+          and r['data'].get('question') == 'Is the deck made of wood or composite?' and r['data'].get('options') == ['Wood, treated', 'Composite'], r)
     r = post('help/request', {'session_id': s1, 'text': 'a running toilet', 'budget': -5})
     check('negative budget refused', r.get('http') == 400, r)
 
