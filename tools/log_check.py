@@ -459,11 +459,12 @@ def run_checks(entries, sessions, scope, now):
                     p.add('ai_options_in_question_text', s, 'AI 2 put choices / markdown inside the question text while '
                           f'"options" is empty: {brief(q, 200)}', [e])
             budget = d.get('budget_known') or d.get('budget_stated_now')
-            # the budget counts the first-choice ("main") items and the tools, not the alternatives
+            # the budget counts the first-choice ("main") items; the tools are shown apart (the customer may own them)
+            # and the alternatives are other options
             counted = d.get('items_total_budgeted', d.get('items_total')) or 0
             if d.get('shown') == 'items' and budget and counted > float(budget) * 1.1:
-                p.add('items_over_budget', s, f'AI 2\'s main items and tools cost ${counted} for a ${budget} budget'
-                      + (f' (the whole list with alternatives: ${d["items_total"]})' if d.get('items_total') != counted else ''), [e], 'warn')
+                p.add('items_over_budget', s, f'AI 2\'s main items cost ${counted} for a ${budget} budget'
+                      + (f' (tools apart: ${d["tools_total"]})' if d.get('tools_total') else ''), [e], 'warn')
             # (budget_rule_applied: AI 2 picked items before the budget was known and n8n asked for it. That is the
             # normal path since AI 2 is told not to ask about the budget itself, so it is not reported.)
             if d.get('dropped_unknown_skus'):

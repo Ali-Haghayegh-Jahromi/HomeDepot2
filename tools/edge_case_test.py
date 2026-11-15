@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Plays the awkward cases of a visit against the running system and checks each one.
-Needs the stand-in AI (python3 n8n/test/fake_gemini.py; ./n8n/setup.sh test/workflow_fake_ai.json):
+Needs the stand-in AI (HD_AI=offline in .env, then ./start.sh setup; or n8n/test/fake_gemini.py):
 it uses the stand-in's test words (test-slow, test-ai1-fails, test-ai2-garbage, test-markdown).
 
   1. the relevancy AI fails while a follow-up question waits -> same question, "please send it again"
@@ -20,8 +20,10 @@ it uses the stand-in's test words (test-slow, test-ai1-fails, test-ai2-garbage, 
      without a Claude key (HD_EXPECT_CLAUDE=no) -> "please send it again"
  14. every Gemini model busy and Claude down -> "please send it again" within the time limit, every try logged
  15. a voice note alone while every Gemini model is out of quota -> "please type it"
- 16. photo-first: "understood" on the question and items screens, a valid "role" on every item, budget counted
-     on main items and tools only
+ 16. photo-first: "understood" on the question and items screens, a valid "role" on every item, the budget counted
+     on the main items only, tools never dropped (cheaper tiers when the budget is tight), the message's budget line
+ 17. the decision trace: on every reply (errors and the kiosk too) and, for the last run that set the screen, on
+     the status poll
 
     python3 tools/edge_case_test.py            (about 4 minutes; the robot drives)
 
@@ -250,12 +252,46 @@ def model_chain_cases():
     check('items with roles: main first, tools last', r.get('screen') == 'items' and items and items[0]['role'] == 'main'
           and [i['role'] for i in items if i['role'] == 'tool'] == [i['role'] for i in items[len(items) - len([1 for i in items if i['role'] == 'tool']):]], items)
     entry = [c['d'] for c in ai_calls(s10) if c['event'] == 'ai_call' and c['d'].get('shown') == 'items']
-    budgeted = round(sum(i['price'] for i in items if i['role'] != 'alternative'), 2)
-    check('the log counts main items + tools against the budget', bool(entry) and entry[-1].get('items_total_budgeted') == budgeted,
-          (entry[-1] if entry else None, budgeted))
-    left_out = entry[-1].get('left_out_for_budget') if entry else None
-    check('over the budget: the costliest tools left out, and the message says so', budgeted <= 60 and (not left_out
-          or ('left out' in r.get('message', '') and not any(i['sku'] in left_out for i in items))), (budgeted, left_out, r.get('message')))
+    main = round(sum(i['price'] for i in items if i['role'] == 'main'), 2)
+    tools = [i for i in items if i['role'] == 'tool']
+    check('the log counts the main items against the budget', bool(entry) and entry[-1].get('items_total_budgeted') == main,
+          (entry[-1] if entry else None, main))
+    msg = r.get('message', '')
+    check('tools are kept (never dropped), each "skip it if you already own one"', bool(tools)
+          and all('already own' in (i.get('reason') or '') for i in tools), tools)
+    check('the message: main items against the budget, tools apart, no "tick"', f'Main items: ${main:g}' in msg.replace('.00 ', ' ')
+          or f'Main items: ${main:.2f}' in msg, msg)
+    check('... and the tools subtotal', 'Tools: $' in msg and 'tick' not in msg.lower() and 'Add the items you want' in msg, msg)
+    check('items reply carries the decision trace', [d['question'] for d in r.get('trace', {}).get('decisions', [])][-6:] ==
+          ['Did AI 2 ask a question or pick items?', 'Budget known?', 'Main items within the budget?', 'Room for the tools too?',
+           'Did the save apply?', 'Any orders for the robot?'] or 'Room for the tools too?' in str(r.get('trace')), r.get('trace'))
+    swapped = entry[-1].get('tools_swapped_for_budget') if entry else None
+    check('tight budget: cheaper tool tiers, logged', main + sum(i['price'] for i in tools) <= 60 or swapped is not None,
+          (main, tools, swapped))
+
+    print('\n17. the decision trace (every reply, and the status poll)')
+    s11 = new_visit()
+    r = post('help/request', {'session_id': s11, 'text': 'tell me a joke about cats'})
+    t = r.get('trace') or {}
+    pairs = [(d['question'], d['answer']) for d in t.get('decisions', [])]
+    check('sorry reply: trace with the execution id', bool(str(t.get('execution_id') or '').isdigit()), t)
+    check('sorry reply: "Relevant to home repair?" -> no, in order', ('Route the call', 'customer input') in pairs
+          and ('Relevant to home repair?', 'no') in pairs
+          and pairs.index(('Route the call', 'customer input')) < pairs.index(('Relevant to home repair?', 'no')), pairs)
+    st = status(s11)
+    check('status poll: the trace of the run that set the screen', (st.get('trace') or {}).get('execution_id') == t.get('execution_id')
+          and ('Relevant to home repair?', 'no') in [(d['question'], d['answer']) for d in st['trace'].get('decisions', [])], st.get('trace'))
+    r = post('help/next', {'session_id': s11})
+    pairs = [(d['question'], d['answer']) for d in (r.get('trace') or {}).get('decisions', [])]
+    check('error reply (409) carries the trace too', r.get('http') == 409 and ('Does the call fit the current step?', 'no') in pairs, r)
+    r = post('help/request', {'session_id': 'nobody-here', 'text': 'hello'})
+    check('unknown visit (404): trace "Is this a known visit?" -> no', r.get('http') == 404
+          and ('Is this a known visit?', 'no') in [(d['question'], d['answer']) for d in (r.get('trace') or {}).get('decisions', [])], r)
+    r = post('help/start', {})
+    check('kiosk reply: trace "Which call is this?" -> kiosk button', ('Which call is this?', 'kiosk button')
+          in [(d['question'], d['answer']) for d in (r.get('trace') or {}).get('decisions', [])], r)
+    stn = status(r['session_id'])
+    check('status of a new visit: the kiosk run\'s trace', (stn.get('trace') or {}).get('execution_id') == r['trace']['execution_id'], stn)
 
 
 def main():
@@ -298,6 +334,8 @@ def main():
     together(ev('near'), ev('arrived'), ev('near'))
     st = status(s1)
     check('near + arrived at once: phone on "arrived", light on', st.get('screen') == 'arrived' and st['data'].get('light_on'), st)
+    check('status poll: the trace of the last robot-event run ("Near or arrived?")', 'Near or arrived?'
+          in [d['question'] for d in (st.get('trace') or {}).get('decisions', [])], st.get('trace'))
     wait_robot('waiting_for_pick')
     time.sleep(1.5)
     st = status(s1)
