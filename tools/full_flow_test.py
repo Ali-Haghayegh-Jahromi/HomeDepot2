@@ -6,8 +6,8 @@ the phone would, and prints every step:
     answers -> item list -> choose items -> robot guides to each item (light on,
     "I am done") -> "anything else?" no -> repair steps and videos -> robot home.
 
-Needs: PostgreSQL + n8n (workflow active) and the robot service (./robot/run.sh
-sim + service, or ./robot/run.sh mock).
+Needs: the running demo (./start.sh). From the host: python3 tools/full_flow_test.py;
+without Python on the host: ./tools.sh test.
 
     python3 tools/full_flow_test.py ["what the customer says"]
 """

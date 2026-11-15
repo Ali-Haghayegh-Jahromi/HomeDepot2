@@ -280,8 +280,8 @@ ask_gemini_key() {   # asks for the key (hidden); sets GEMINI_INPUT ('' = skip)
     echo
     input=$(printf '%s' "$input" | tr -d '[:space:]')
     [ -z "$input" ] && return 0
-    if ! printf '%s' "$input" | grep -Eq '^[A-Za-z0-9_-]{20,}$'; then
-      say "  That does not look like an API key (letters, digits, - and _, usually 39 characters). Try again, or press Enter to skip."
+    if ! printf '%s' "$input" | grep -Eq '^[A-Za-z0-9._-]{20,}$'; then
+      say "  That does not look like an API key (letters, digits, '.', '-' and '_', at least 20 characters). Try again, or press Enter to skip."
       continue
     fi
     if [ -z "${HD_SKIP_KEY_CHECK:-}" ]; then
@@ -329,6 +329,8 @@ n8n_setup() {   # credentials + workflow into n8n, switched on; only when someth
   if [ -n "$gemini" ]; then
     creds="$creds,{\"id\":\"hdGeminiApiKey001\",\"name\":\"HD Google Gemini API key\",\"type\":\"googlePalmApi\",\"data\":{\"host\":\"https://generativelanguage.googleapis.com\",\"apiKey\":\"$(json_escape "$gemini")\"}}"
   fi
+  # the stand-in AI's credential (dummy key): n8n's native Gemini chat node uses it in offline mode
+  creds="$creds,{\"id\":\"hdGeminiStandIn01\",\"name\":\"HD Gemini stand-in (no key)\",\"type\":\"googlePalmApi\",\"data\":{\"host\":\"http://fake-ai:8010\",\"apiKey\":\"stand-in-no-key\"}}"
   creds="$creds]"
   printf '%s' "$creds" | dc exec -T n8n sh -c 'umask 077; cat > /tmp/hd_credentials.json' || return 1
   printf '.'

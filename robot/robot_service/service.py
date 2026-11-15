@@ -635,6 +635,10 @@ async def lifespan(app):
 
 app = FastAPI(title='Home Depot guide robot service', lifespan=lifespan)
 
+# Live mirror of the customer's phone on the demo stage (display relay only, no decisions)
+from mirror import router as mirror_router  # noqa: E402
+app.include_router(mirror_router)
+
 
 def log_order(request, body, started, session_id=None, **details):
     """One structured log line per order from n8n: what was asked, and the state it left the robot in."""
