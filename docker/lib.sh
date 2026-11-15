@@ -227,6 +227,11 @@ n8n_owner() {   # creates the n8n owner account on a new n8n; sets N8N_LOGIN_OK 
   base=http://localhost:$N8N_PORT
   email=$(env_get N8N_OWNER_EMAIL); pw=$(env_get N8N_OWNER_PASSWORD)
   body=$(printf '{"email":"%s","firstName":"Demo","lastName":"Presenter","password":"%s"}' "$(json_escape "$email")" "$(json_escape "$pw")")
+  # n8n answers /healthz before its REST API is ready (meanwhile it answers "starting up"): wait for the settings
+  tries=0
+  while [ $tries -lt 60 ] && ! curl -s --max-time 3 "$base/rest/settings" | grep -q '"showSetupOnFirstLoad"'; do
+    tries=$((tries + 1)); sleep 1
+  done
   tries=0
   while [ $tries -lt 15 ] && curl -s "$base/rest/settings" | grep -q '"showSetupOnFirstLoad":true'; do
     tries=$((tries + 1))
@@ -236,9 +241,12 @@ n8n_owner() {   # creates the n8n owner account on a new n8n; sets N8N_LOGIN_OK 
     sleep 2   # n8n answers /healthz a moment before it accepts the owner setup
   done
   login=$(printf '{"emailOrLdapLoginId":"%s","password":"%s"}' "$(json_escape "$email")" "$(json_escape "$pw")")
-  code=$(printf '%s' "$login" | curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-    --data-binary @- "$base/rest/login")
-  if [ "$code" = 200 ]; then N8N_LOGIN_OK=yes; else N8N_LOGIN_OK=no; fi
+  # the login counts only if n8n answers with the account (a "starting up" page also answers 200)
+  if printf '%s' "$login" | curl -s -X POST -H 'Content-Type: application/json' --data-binary @- "$base/rest/login" \
+       | grep -qi "\"email\":\"$(json_escape "$email")\""; then N8N_LOGIN_OK=yes; else N8N_LOGIN_OK=no; fi
+  if [ "$N8N_LOGIN_OK" = no ] && curl -s "$base/rest/settings" | grep -q '"showSetupOnFirstLoad":true'; then
+    bad "n8n has no login yet: open http://localhost:$N8N_PORT and create one (or run ./start.sh again)"
+  fi
 }
 
 gemini_key_state() {   # what n8n has saved as the Gemini key: real | placeholder | missing (never prints the key)
