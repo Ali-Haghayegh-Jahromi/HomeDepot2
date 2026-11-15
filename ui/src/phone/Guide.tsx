@@ -39,7 +39,8 @@ function useBuzzWhenLit(lit: boolean) {
   useEffect(() => {
     if (lit && !was.current && !document.documentElement.classList.contains('page-mirror')) {
       try {
-        navigator.vibrate?.(150)
+        // only after a tap on this page (after a reload Chrome blocks it and logs an error)
+        if (navigator.userActivation?.hasBeenActive ?? true) navigator.vibrate?.(150)
       } catch {
         // not supported
       }
