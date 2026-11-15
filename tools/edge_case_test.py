@@ -56,13 +56,17 @@ def call(method, url, body=None, timeout=60):
     request = urllib.request.Request(url, data=data, method=method, headers={'Content-Type': 'application/json'})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as reply:
-            return {'http': reply.status, **json.loads(reply.read() or '{}')}
+            status, text = reply.status, reply.read()
     except urllib.error.HTTPError as error:
-        text = error.read()
-        try:
-            return {'http': error.code, **json.loads(text or '{}')}
-        except ValueError:
-            return {'http': error.code, 'raw': text[:200]}
+        status, text = error.code, error.read()
+    except (urllib.error.URLError, OSError) as error:   # nothing answers (the demo is not running?)
+        sys.exit(f'FAILED: {method} {url} did not answer: {error}')
+    try:
+        reply = json.loads(text or '{}')
+    except ValueError:   # not JSON (an HTML error page, "Error in workflow", ...): say what came back
+        print(f'   HTTP {status} from {method} {url}, not JSON: {text[:200]!r}')
+        return {'http': status, 'raw': text[:200].decode('utf-8', 'replace')}
+    return {'http': status, **(reply if isinstance(reply, dict) else {'data': reply})}
 
 
 def post(path, body):

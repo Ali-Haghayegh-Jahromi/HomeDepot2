@@ -27,9 +27,21 @@ def call(method, url, body=None):
     request = urllib.request.Request(url, data=data, method=method, headers={'Content-Type': 'application/json'})
     try:
         with urllib.request.urlopen(request, timeout=120) as reply:
-            return json.loads(reply.read() or '{}')
+            status, text = reply.status, reply.read()
     except urllib.error.HTTPError as error:
-        return {'http_error': error.code, **json.loads(error.read() or '{}')}
+        status, text = error.code, error.read()
+    except (urllib.error.URLError, OSError) as error:   # nothing answers (the demo is not running?)
+        sys.exit(f'\nFAILED: {method} {url} did not answer: {error}')
+    try:
+        reply = json.loads(text or '{}')
+    except ValueError:   # not JSON (an HTML error page, "Error in workflow", ...): say what came back
+        print(f'   HTTP {status} from {method} {url}, not JSON: {text[:200]!r}')
+        reply = {'raw': text[:200].decode('utf-8', 'replace')}
+    if not isinstance(reply, dict):
+        reply = {'data': reply}
+    if status >= 400:
+        reply = {'http_error': status, **reply}
+    return reply
 
 
 def show(step, reply):

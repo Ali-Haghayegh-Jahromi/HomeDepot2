@@ -165,9 +165,16 @@ def reply_for(body):
     understood = (f'I can see what looks like this job: {title.lower()}.' if job else 'I can see a photo, but not what needs fixing.') \
         if has_media else f'You said: {said}.'
 
-    money = re.search(r'\$\s?(\d+)', talk) or re.search(r'(\d+)\s?(dollars|bucks)', talk)
+    # the budget: what the customer says now comes first (the conversation so far also holds the options of the
+    # budget question, "Under $30", which must not win over the answer), then the budget already saved, then
+    # anything said earlier in this request
+    def money_in(words):
+        return re.search(r'\$\s?(\d+)', words) or re.search(r'(\d+)\s?(dollars|bucks)', words)
+    said_now = money_in(new.lower())
     known = re.search(r'Budget for this job: \$(\d+(\.\d+)?)', text)
-    budget = float(known.group(1)) if known else float(money.group(1)) if money else None
+    earlier = money_in(talk)
+    budget = float(said_now.group(1)) if said_now else float(known.group(1)) if known \
+        else float(earlier.group(1)) if earlier else None
     if not job:
         return {'type': 'question', 'understood': understood, 'request_title': title, 'budget': budget,
                 'question': 'What would you like to fix or build?', 'options': ['A deck board', 'A running toilet', 'A hole in a wall'],
