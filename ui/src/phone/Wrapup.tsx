@@ -193,7 +193,7 @@ export function Finished({ s }: { s: PhoneSession }) {
         />
       )}
 
-      <VStack gap={1} hAlign="center">
+      <VStack gap={1} hAlign="center" className="finished-link">
         <Text type="supporting" justify="center">
           {finished
             ? 'Pay at any register. The robot is heading back to its dock by the kiosk.'

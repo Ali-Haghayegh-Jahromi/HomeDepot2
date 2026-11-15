@@ -19,6 +19,9 @@ export interface Message {
   who: 'me' | 'bot'
   text: string
   tone?: 'sorry'
+  /** 'understood': the AI's one-sentence reading of the customer's photo or voice note. */
+  kind?: 'understood'
+  media?: 'photo' | 'voice'
   photo?: string // data URL preview (not kept across reloads)
   hadPhoto?: boolean
   voiceSeconds?: number
@@ -108,7 +111,11 @@ export function usePhoneSession() {
   const [budgetFocus, setBudgetFocus] = useState(0)
 
   const lastScreen = useRef<ScreenName | null>(saved?.lastScreen ?? null)
-  const lastBotText = useRef<string | null>(saved?.talk.filter((m) => m.who === 'bot').pop()?.text ?? null)
+  const lastBotText = useRef<string | null>(
+    saved?.talk.filter((m) => m.who === 'bot' && !m.kind).pop()?.text ?? null,
+  )
+  const talkRef = useRef(talk)
+  talkRef.current = talk
   const currentRef = useRef<ScreenReply | null>(null)
   const epoch = useRef(0) // bumps when an action starts and when it ends
   const busyRef = useRef(false)
@@ -155,6 +162,13 @@ export function usePhoneSession() {
           setPicked([])
         }
         if (reply.screen === 'anything_else' && screenChanged) setCompleted((c) => c + 1)
+      }
+      // What the AI saw in the photo (or heard in the voice note) that the customer just sent.
+      const understood = (reply.data?.understood ?? '').trim()
+      if (mine && understood && (reply.screen === 'question' || reply.screen === 'items')) {
+        const lastMe = [...talkRef.current].reverse().find((m) => m.who === 'me')
+        const media = lastMe?.photo || lastMe?.hadPhoto ? 'photo' : lastMe?.voiceSeconds ? 'voice' : null
+        if (media) say({ who: 'bot', kind: 'understood', media, text: understood })
       }
       // A question is said once, whether it came as the answer to the customer or with a poll.
       const question = reply.data?.question || reply.message

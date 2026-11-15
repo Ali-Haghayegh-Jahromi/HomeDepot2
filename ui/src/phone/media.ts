@@ -39,12 +39,19 @@ export interface Recording {
 
 /** Starts recording from the microphone. Throws if there is no microphone or no permission. */
 export async function startRecording(): Promise<Recording> {
+  if (!window.isSecureContext) throw new Error('insecure') // plain http: browsers hide the microphone
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
     throw new Error('unsupported')
   }
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   const chunks: Blob[] = []
-  const recorder = new MediaRecorder(stream)
+  let recorder: MediaRecorder
+  try {
+    recorder = new MediaRecorder(stream)
+  } catch (e) {
+    stream.getTracks().forEach((t) => t.stop())
+    throw e
+  }
   const started = Date.now()
   recorder.ondataavailable = (e) => {
     if (e.data.size) chunks.push(e.data)

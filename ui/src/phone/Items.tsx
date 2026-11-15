@@ -21,7 +21,33 @@ import {
 } from '@heroicons/react/24/outline'
 import { money } from '../shared/api'
 import type { Item } from '../shared/types'
+import { Understood } from './Conversation'
 import type { PhoneSession } from './usePhoneSession'
+
+/** The AI tags each item with what it is for; untagged items count as the fix itself. */
+const GROUPS = [
+  { role: 'main', title: 'Fixes it', hint: 'What the repair itself needs' },
+  { role: 'tool', title: "Tools you'll need", hint: 'Skip any you already have at home' },
+  { role: 'alternative', title: 'Alternatives', hint: 'Instead of an item above, if you prefer' },
+] as const
+const roleOf = (i: Item) => (i.role === 'tool' || i.role === 'alternative' ? i.role : 'main')
+
+/** The photo the customer sent and what the AI saw in it, above the item list. */
+function SeenPhoto({ s }: { s: PhoneSession }) {
+  const seen = [...s.talk].reverse().find((m) => m.kind === 'understood')
+  if (!seen) return null
+  const photo = [...s.talk].reverse().find((m) => m.who === 'me' && m.photo)?.photo
+  return (
+    <Card padding={3}>
+      <HStack gap={3} vAlign="start">
+        {seen.media === 'photo' && photo && <img className="seen-photo" src={photo} alt="The photo you sent" />}
+        <StackItem size="fill">
+          <Understood m={seen} />
+        </StackItem>
+      </HStack>
+    </Card>
+  )
+}
 
 const ordinal = (n: number) => n + (['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] ?? 'th')
 
@@ -74,9 +100,9 @@ function ItemCard({
           )}
 
           <VStack gap={1}>
-            <HStack gap={1} vAlign="center">
+            <HStack gap={1} vAlign="center" wrap="wrap">
               <Icon icon={MapPinIcon} size="sm" color="secondary" />
-              <Text type="label">
+              <Text type="label" className="nowrap">
                 Aisle {item.aisle} · Bay {item.shelf}
               </Text>
               {item.department && <Text type="supporting">· {item.department}</Text>}
@@ -122,8 +148,14 @@ export function ItemsList({ s }: { s: PhoneSession }) {
       />
     )
   }
+  const groups = GROUPS.map((g) => ({ ...g, items: items.filter((i) => roleOf(i) === g.role) })).filter(
+    (g) => g.items.length > 0,
+  )
+  // Headings only when the AI tagged the items with more than one role.
+  const grouped = groups.length > 1
   return (
     <VStack gap={4}>
+      <SeenPhoto s={s} />
       <VStack gap={1}>
         <Text type="label" color="accent">
           {items.length} items for your repair
@@ -135,23 +167,28 @@ export function ItemsList({ s }: { s: PhoneSession }) {
           </Text>
         )}
       </VStack>
-      <Text type="supporting">
-        {s.current?.message
-          ? 'The robot walks you to them in the order you add them.'
-          : 'Add items in the order you want to pick them up. The robot walks you there in that order.'}
-      </Text>
-      <VStack gap={3} as="ul" className="plain-list" aria-label="Suggested items">
-        {items.map((i) => (
-          <li key={i.sku}>
-            <ItemCard
-              item={i}
-              order={s.picked.indexOf(i.sku) + 1}
-              onToggle={() => s.togglePick(i.sku)}
-              isDisabled={!!s.busy}
-            />
-          </li>
-        ))}
-      </VStack>
+      {groups.map((g) => (
+        <VStack gap={3} as="section" key={g.role} aria-label={g.title}>
+          {grouped && (
+            <VStack gap={0}>
+              <Heading level={2}>{g.title}</Heading>
+              <Text type="supporting">{g.hint}</Text>
+            </VStack>
+          )}
+          <VStack gap={3} as="ul" className="plain-list" aria-label={grouped ? g.title : 'Suggested items'}>
+            {g.items.map((i) => (
+              <li key={i.sku}>
+                <ItemCard
+                  item={i}
+                  order={s.picked.indexOf(i.sku) + 1}
+                  onToggle={() => s.togglePick(i.sku)}
+                  isDisabled={!!s.busy}
+                />
+              </li>
+            ))}
+          </VStack>
+        </VStack>
+      ))}
       {s.notice && (
         <Banner
           status={s.notice.tone}
@@ -201,11 +238,13 @@ export function ItemsFooter({ s }: { s: PhoneSession }) {
             <Text type="supporting" aria-live="polite">
               {s.busy?.kind === 'confirm'
                 ? 'Writing your repair steps and calling the robot…'
-                : s.budget != null
-                  ? over
-                    ? `${money(total - s.budget)} over your ${money(s.budget)} budget`
-                    : `${money(s.budget - total)} left of your ${money(s.budget)} budget`
-                  : 'Prices before tax'}
+                : !n
+                  ? 'Add them in the order you want to pick them up'
+                  : s.budget != null
+                    ? over
+                      ? `${money(total - s.budget)} over your ${money(s.budget)} budget`
+                      : `${money(s.budget - total)} left of your ${money(s.budget)} budget`
+                    : 'Prices before tax'}
             </Text>
           </VStack>
         </StackItem>

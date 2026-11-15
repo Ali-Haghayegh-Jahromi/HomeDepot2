@@ -52,6 +52,28 @@ body {
   block-size: 100%;
 }
 
+.nowrap {
+  white-space: nowrap;
+}
+
+/* Small links and the photo's remove button: a 44 px tap area around what is drawn. */
+.page-phone .item-card a,
+.page-phone .finished-link a {
+  display: inline-block;
+  padding-block: var(--spacing-3);
+  margin-block: calc(-1 * var(--spacing-3));
+}
+
+.composer :is(.astryx-thumbnail, .astryx-token) button {
+  position: relative;
+}
+
+.composer :is(.astryx-thumbnail, .astryx-token) button::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--spacing-3));
+}
+
 .plain-list {
   list-style: none;
   margin: 0;
@@ -133,6 +155,43 @@ body {
   align-items: start;
 }
 
+.bubble-photo-wrap {
+  position: relative;
+  display: block;
+  inline-size: fit-content;
+  overflow: hidden;
+  border-radius: var(--radius-element);
+}
+
+/* While the AI looks at the photo: a soft orange line sweeps over it. */
+.bubble-photo-wrap.is-scanning::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  block-size: 35%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--color-accent) 45%, transparent) 85%,
+    var(--color-accent)
+  );
+  animation: scan 1.8s var(--ease-standard) infinite alternate;
+}
+
+.seen-photo {
+  display: block;
+  flex-shrink: 0;
+  inline-size: calc(var(--spacing-12) + var(--spacing-6));
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-element);
+}
+
+.understood p {
+  margin: 0;
+}
+
 .bubble-photo {
   display: block;
   inline-size: 100%;
@@ -154,7 +213,7 @@ body {
 }
 
 .composer-recording {
-  padding: var(--spacing-2) var(--spacing-3);
+  padding: var(--spacing-3);
   border-radius: var(--radius-container);
   background: var(--color-error-muted);
 }
@@ -538,6 +597,7 @@ body {
 .story-act {
   position: relative;
   display: grid;
+  align-content: start;
   gap: var(--spacing-2);
   padding: var(--spacing-2) var(--spacing-3);
   border-radius: var(--radius-container);
@@ -585,6 +645,7 @@ body {
 .story-steps {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--spacing-1);
   margin: 0;
   padding: 0;
@@ -1052,6 +1113,40 @@ body {
   animation: slide-in var(--duration-medium) var(--ease-entrance);
 }
 
+/* n8n's decision nodes, as on the canvas: "Relevant to home repair?" → yes */
+.decision-path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1) var(--spacing-2);
+}
+
+.decision {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: var(--border-width) solid var(--color-border-orange);
+  border-radius: var(--radius-element);
+  font-size: var(--font-size-sm);
+}
+
+.decision-node {
+  padding: var(--spacing-0-5) var(--spacing-2);
+  background: var(--color-background-surface);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.decision-branch {
+  padding: var(--spacing-0-5) var(--spacing-2);
+  background: var(--color-background-orange);
+  color: var(--color-text-orange);
+  font-weight: var(--font-weight-bold);
+}
+
+.decision-branch::before {
+  content: '→ ';
+}
+
 .event-call {
   margin-inline-start: var(--spacing-2);
   white-space: nowrap;
@@ -1098,6 +1193,11 @@ body {
   overflow: hidden;
 }
 
+/* A recording is watched smaller than it is made: every rem-based size a touch larger. */
+html.page-studio {
+  font-size: 106.25%;
+}
+
 .studio {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1123,6 +1223,7 @@ body {
 
 .studio-brand {
   min-inline-size: 0;
+  max-inline-size: 22rem;
 }
 
 .studio-main {
@@ -1213,7 +1314,7 @@ body {
 
 .studio-bottom {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   gap: var(--spacing-5);
   min-block-size: 0;
 }
@@ -1263,6 +1364,15 @@ body {
   50% {
     transform: scale(1.5);
     opacity: 0.25;
+  }
+}
+
+@keyframes scan {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(290%);
   }
 }
 

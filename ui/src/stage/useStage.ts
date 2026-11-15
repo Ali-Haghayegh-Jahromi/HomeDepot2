@@ -17,6 +17,68 @@ export interface LogEntry {
   text: string
   /** The API call involved, shown in a monospace chip. */
   call?: string
+  /** The n8n decision nodes this step went through, as [node name, branch taken]. */
+  decisions?: Decision[]
+}
+
+export type Decision = [node: string, branch: string]
+
+const RELEVANT: Decision = ['Relevant to home repair?', 'yes']
+
+/** n8n's budget rule question (Config: budget_question), as opposed to a follow-up the AI asked itself. */
+const isBudgetRule = (s: ScreenReply) =>
+  /^before i pick the items/i.test(s.message ?? '') || (s.data?.options ?? []).includes('No fixed budget')
+
+/**
+ * Which n8n decision nodes (their names on the canvas) led to this screen. Every screen change
+ * has exactly one path through the workflow, so the path is read off the change itself.
+ */
+function decisionsFor(s: ScreenReply, prev: ScreenName | null): { text: string; decisions: Decision[] } | null {
+  switch (s.screen) {
+    case 'sorry':
+      return { text: 'Not a home-repair request: the phone says sorry.', decisions: [['Relevant to home repair?', 'no']] }
+    case 'question':
+      return isBudgetRule(s)
+        ? {
+            text: 'Asks for the budget before showing any items.',
+            decisions: [RELEVANT, ['Did the AI ask a question or pick items?', 'picked items'], ['Budget known?', 'no']],
+          }
+        : {
+            text: 'Sends the AI’s follow-up question to the phone.',
+            decisions: [RELEVANT, ['Did the AI ask a question or pick items?', 'asked a question']],
+          }
+    case 'items':
+      return {
+        text: `Shows ${s.data?.items?.length ?? 'the'} items from this store’s catalogue.`,
+        decisions: [RELEVANT, ['Did the AI ask a question or pick items?', 'picked items'], ['Budget known?', 'yes']],
+      }
+    case 'guiding':
+      return prev === 'arrived'
+        ? { text: 'Light off, robot sent to the next item.', decisions: [['More items left?', 'yes']] }
+        : {
+            text: 'Robot sent to the first item. AI 3 writes the repair steps meanwhile.',
+            decisions: [['Any items chosen?', 'yes']],
+          }
+    case 'arrived':
+      return { text: 'The phone shows “I am done”.', decisions: [['Near or arrived?', 'arrived']] }
+    case 'anything_else':
+      return prev === 'items'
+        ? { text: 'No items picked: asks if there is anything else.', decisions: [['Any items chosen?', 'no']] }
+        : { text: 'All items collected: asks if there is anything else.', decisions: [['More items left?', 'no']] }
+    case 'finished':
+      return {
+        text: 'Visit finished: repair steps and videos on the phone, robot sent home.',
+        decisions: [['Anything else: yes or no?', 'no']],
+      }
+    case 'input':
+      return prev === 'anything_else'
+        ? { text: 'A new request in the same visit.', decisions: [['Anything else: yes or no?', 'yes']] }
+        : null
+    case 'timed_out':
+      return { text: '10 minutes without input: visit closed, robot sent home.', decisions: [['Idle visits found?', 'yes']] }
+    default:
+      return null
+  }
 }
 
 export type KioskState =
@@ -108,9 +170,9 @@ export function useStage() {
   const sessionRef = useRef(session)
   sessionRef.current = session
 
-  const say = useCallback((actor: Actor, text: string, call?: string) => {
+  const say = useCallback((actor: Actor, text: string, call?: string, decisions?: Decision[]) => {
     const time = new Date().toLocaleTimeString([], { hour12: false })
-    setLog((l) => [{ id: ++nextId.current, time, actor, text, call }, ...l].slice(0, MAX_LOG))
+    setLog((l) => [{ id: ++nextId.current, time, actor, text, call, decisions }, ...l].slice(0, MAX_LOG))
   }, [])
 
   // ------------------------------------------------------------------ kiosk
@@ -181,7 +243,7 @@ export function useStage() {
         lastState.current = r.state
       }
       if (light && !lastLight.current) {
-        say('light', `Within 5 m: shelf tag ${item?.tag_code} is lit.`, '/robot/event near → POST /tag/on')
+        say('n8n', `Robot within 5 m: shelf tag ${item?.tag_code} lit.`, 'POST /tag/on', [['Near or arrived?', 'near (5 m)']])
         if (lastScreen.current === 'guiding') setFlow('light')
       }
       if (!light && lastLight.current) say('light', 'Item picked up. The shelf light is off.', 'POST /tag/off')
@@ -229,22 +291,13 @@ export function useStage() {
         setPhone(s)
         if (s.screen === lastScreen.current) return
         const prev = lastScreen.current
-        const said: Partial<Record<ScreenName, [Actor, string]>> = {
-          input: ['phone', 'Phone opened. Waiting for the customer to describe the problem.'],
-          sorry: ['ai', 'Relevancy check: not something this store helps with. The phone says sorry.'],
-          question: ['ai', 'Relevant. The AI asks a follow-up question.'],
-          items: ['ai', 'The AI read the store catalogue and sent an item list to the phone.'],
-          guiding:
-            prev === 'arrived'
-              ? ['n8n', 'Item collected. Light off, robot sent to the next item.']
-              : ['n8n', 'Items chosen. Repair steps written, robot sent to the first item.'],
-          arrived: ['robot', 'At the shelf. The customer grabs the item and taps “I am done”.'],
-          anything_else: ['phone', 'All items collected. The phone asks “anything else?”.'],
-          finished: ['n8n', 'Visit finished. Repair steps and videos are on the phone, robot sent home.'],
-          timed_out: ['n8n', '10 minutes without input. Visit closed, robot sent home.'],
-        }
-        const line = said[s.screen]
-        if (line) say(line[0], line[1], 'GET /help/status')
+        if (s.screen === 'input' && prev !== 'anything_else')
+          say('phone', 'Phone opened. Waiting for the customer to describe the problem.', 'GET /help/status')
+        const understood = (s.data?.understood ?? '').trim()
+        if (understood && (s.screen === 'question' || s.screen === 'items'))
+          say('ai', `Gemini understood: “${understood}”`, 'AI 2: understand the need')
+        const step = decisionsFor(s, prev)
+        if (step) say('n8n', step.text, undefined, step.decisions)
         report('stage_screen', { screen: s.screen, from: prev, status: s.status, sku: s.data?.item?.sku }, 'info', true)
         setFlow(s.screen === 'sorry' ? 'gate' : s.screen === 'timed_out' ? 'finished' : (s.screen as FlowKey))
         lastScreen.current = s.screen

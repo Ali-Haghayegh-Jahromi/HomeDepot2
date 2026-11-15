@@ -427,7 +427,7 @@ export function EventLog({ log }: { log: LogEntry[] }) {
         <Heading level={3} id="log-title">
           Live events
         </Heading>
-        <Text type="supporting">newest first</Text>
+        <Text type="supporting">newest first · n8n decisions as they happen</Text>
       </HStack>
       {log.length === 0 ? (
         <Text type="supporting" as="p" className="event-empty">
@@ -436,19 +436,31 @@ export function EventLog({ log }: { log: LogEntry[] }) {
       ) : (
         <ol className="event-list" aria-live="polite">
           {log.map((e) => (
-            <li key={e.id}>
+            <li key={e.id} className={e.decisions ? 'is-decision' : undefined}>
               <Text type="supporting" hasTabularNumbers>
                 {e.time}
               </Text>
               <Badge label={ACTOR[e.actor].label} variant={ACTOR[e.actor].variant} />
-              <Text>
-                {e.text}
-                {e.call && (
-                  <span className="event-call">
-                    <Code color="secondary">{e.call}</Code>
+              <VStack gap={1}>
+                {e.decisions && (
+                  <span className="decision-path" aria-label="n8n decisions">
+                    {e.decisions.map(([node, branch]) => (
+                      <span key={node} className="decision">
+                        <span className="decision-node">{node}</span>
+                        <span className="decision-branch">{branch}</span>
+                      </span>
+                    ))}
                   </span>
                 )}
-              </Text>
+                <Text>
+                  {e.text}
+                  {e.call && (
+                    <span className="event-call">
+                      <Code color="secondary">{e.call}</Code>
+                    </span>
+                  )}
+                </Text>
+              </VStack>
             </li>
           ))}
         </ol>

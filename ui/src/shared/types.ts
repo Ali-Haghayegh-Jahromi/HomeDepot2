@@ -18,7 +18,11 @@ export interface Item {
   aisle: number
   shelf: number
   reason?: string
+  /** What the item is for in this repair (added by the AI; absent in older replies). */
+  role?: ItemRole | string
 }
+
+export type ItemRole = 'main' | 'alternative' | 'tool'
 
 export interface Video {
   title: string
@@ -33,6 +37,8 @@ export interface Summary {
 }
 
 export interface ScreenData {
+  /** One sentence on what the AI understood from the customer's last message (photo, voice, text). */
+  understood?: string
   question?: string
   options?: string[]
   items?: Item[]

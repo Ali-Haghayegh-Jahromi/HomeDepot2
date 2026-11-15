@@ -108,11 +108,19 @@ export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKe
       recording.current = await startRecording()
       setRecordingSince(Date.now())
     } catch (e) {
-      report('microphone_unavailable', { error: String((e as Error)?.message ?? e) }, 'warn')
+      const name = (e as Error)?.name
+      const message = (e as Error)?.message
+      report('microphone_unavailable', { error: String(message ?? e), name }, 'warn')
       setProblem(
-        (e as Error)?.message === 'unsupported'
-          ? "Voice notes aren't supported in this browser. Type or add a photo instead."
-          : 'We need permission to use the microphone. Allow it in your browser, or type instead.',
+        message === 'insecure'
+          ? 'Voice notes need the secure (https) link from the kiosk. Type or add a photo instead.'
+          : message === 'unsupported'
+            ? "Voice notes aren't supported in this browser. Type or add a photo instead."
+            : name === 'NotFoundError' || name === 'OverconstrainedError'
+              ? "We couldn't find a microphone on this phone. Type or add a photo instead."
+              : name === 'NotReadableError' || name === 'AbortError'
+                ? 'The microphone is busy in another app. Close it and try again, or type instead.'
+                : 'We need permission to use the microphone. Allow it in your browser settings, or type instead.',
       )
     }
   }
@@ -187,6 +195,14 @@ export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKe
               onRemove={() => setDraft((d) => ({ ...d, photo: null }))}
             />
           )}
+          {v.photo && !v.text.trim() && (
+            <StackItem size="fill">
+              <VStack gap={0}>
+                <Text type="label">Photo added</Text>
+                <Text type="supporting">Add a few words about it, or just send it.</Text>
+              </VStack>
+            </StackItem>
+          )}
           {!!v.voiceSeconds && (
             <Token
               size="lg"
@@ -234,32 +250,41 @@ export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKe
       )}
 
       {v.recordingSince != null ? (
-        <HStack gap={3} vAlign="center" className="composer-recording" role="status">
-          <StatusDot variant="error" label="Recording" isPulsing />
-          <StackItem size="fill">
-            <VStack gap={0}>
-              <Text type="label">Recording… {clock(elapsed)}</Text>
-              <Text type="supporting">Describe the problem, then tap Stop.</Text>
-            </VStack>
-          </StackItem>
-          <Button
-            label="Cancel"
-            variant="ghost"
-            size="lg"
-            onClick={() => {
-              recording.current?.cancel()
-              recording.current = null
-              setRecordingSince(null)
-            }}
-          />
-          <Button
-            label="Stop"
-            variant="primary"
-            size="lg"
-            icon={<Icon icon={StopIcon} />}
-            onClick={() => void stopRecording()}
-          />
-        </HStack>
+        <VStack gap={3} className="composer-recording" role="status">
+          <HStack gap={3} vAlign="center">
+            <StatusDot variant="error" label="Recording" isPulsing />
+            <StackItem size="fill">
+              <VStack gap={0}>
+                <Text type="label" hasTabularNumbers>
+                  Recording… {clock(elapsed)}
+                </Text>
+                <Text type="supporting">Describe the problem, then tap Stop.</Text>
+              </VStack>
+            </StackItem>
+          </HStack>
+          <HStack gap={2}>
+            <Button
+              label="Cancel"
+              variant="ghost"
+              size="lg"
+              onClick={() => {
+                recording.current?.cancel()
+                recording.current = null
+                setRecordingSince(null)
+              }}
+            />
+            <StackItem size="fill">
+              <Button
+                label="Stop"
+                variant="primary"
+                size="lg"
+                width="100%"
+                icon={<Icon icon={StopIcon} />}
+                onClick={() => void stopRecording()}
+              />
+            </StackItem>
+          </HStack>
+        </VStack>
       ) : (
         <VStack gap={2}>
           <TextArea

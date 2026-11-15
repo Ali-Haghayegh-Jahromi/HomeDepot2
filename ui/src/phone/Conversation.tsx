@@ -16,6 +16,7 @@ import {
   ChatBubbleLeftEllipsisIcon,
   CurrencyDollarIcon,
   ExclamationCircleIcon,
+  EyeIcon,
   MapPinIcon,
   MicrophoneIcon,
   ShoppingCartIcon,
@@ -35,15 +36,30 @@ export const asksAboutBudget = (q: string | undefined) => !!q && /budget|spend|p
 
 /** Honest progress while the AI works (2-20 s): what is most likely happening right now. */
 function thinkingStep(seconds: number, hasPhoto: boolean, hasVoice: boolean): string {
-  if (seconds < 3) return 'Checking your request…'
-  if (seconds < 8)
+  if (seconds < 2) return hasPhoto ? 'Sending your photo…' : hasVoice ? 'Sending your voice note…' : 'Checking your request…'
+  if (seconds < 9)
     return hasVoice
       ? 'Listening to your voice note…'
       : hasPhoto
         ? 'Looking at your photo…'
         : 'Understanding the problem…'
-  if (seconds < 16) return 'Finding the right items in this store…'
+  if (seconds < 16) return 'Checking what this store has in stock…'
   return 'Comparing prices and aisles. Almost there…'
+}
+
+/** The AI's reading of the customer's photo or voice note: "Here's what I see: …". */
+export function Understood({ m }: { m: Pick<Message, 'text' | 'media'> }) {
+  return (
+    <VStack gap={1} className="understood">
+      <HStack gap={1} vAlign="center">
+        <Icon icon={m.media === 'voice' ? MicrophoneIcon : EyeIcon} size="sm" color="accent" />
+        <Text type="label" color="accent">
+          {m.media === 'voice' ? "Here's what I heard" : "Here's what I see"}
+        </Text>
+      </HStack>
+      <Text as="p">{m.text}</Text>
+    </VStack>
+  )
 }
 
 function Thinking({ since, last }: { since: number; last: Message | undefined }) {
@@ -72,7 +88,9 @@ function Bubble({ m, onRetry, isBusy }: { m: Message; onRetry: (id: number) => v
     return (
       <ChatMessage sender="assistant">
         <ChatMessageBubble>
-          {m.tone === 'sorry' ? (
+          {m.kind === 'understood' ? (
+            <Understood m={m} />
+          ) : m.tone === 'sorry' ? (
             <HStack gap={2} vAlign="start" className="bubble-sorry">
               <Icon icon={ExclamationCircleIcon} color="warning" size="sm" />
               <Text as="p">{m.text}</Text>
@@ -109,7 +127,11 @@ function Bubble({ m, onRetry, isBusy }: { m: Message; onRetry: (id: number) => v
     >
       <ChatMessageBubble>
         <VStack gap={2}>
-          {m.photo && <img className="bubble-photo" src={m.photo} alt="The photo you sent" />}
+          {m.photo && (
+            <span className={m.state === 'sending' ? 'bubble-photo-wrap is-scanning' : 'bubble-photo-wrap'}>
+              <img className="bubble-photo" src={m.photo} alt="The photo you sent" />
+            </span>
+          )}
           {!m.photo && m.hadPhoto && (
             <HStack gap={1} vAlign="center">
               <Icon icon={CameraIcon} size="sm" color="inherit" />
@@ -211,7 +233,12 @@ export function Conversation({ s }: { s: PhoneSession }) {
     if (s.talk.length === 0 && !s.busy) return
     let el = end.current?.parentElement ?? null
     while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement
-    el?.scrollTo({ top: el.scrollHeight, behavior: reduceMotion ? 'auto' : 'smooth' })
+    const area = el
+    const toEnd = () => area?.scrollTo({ top: area.scrollHeight, behavior: reduceMotion ? 'auto' : 'smooth' })
+    toEnd()
+    // once more after photos have decoded and grown the conversation
+    const later = window.setTimeout(toEnd, 400)
+    return () => window.clearTimeout(later)
   }, [s.talk.length, s.busy, screen, options.length, reduceMotion])
 
   const answer = (text: string) => void s.sendRequest({ text, photo: null, voice: null, budget: null })
