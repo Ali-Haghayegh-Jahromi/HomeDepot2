@@ -205,6 +205,9 @@ class MockDriver:
     def show_lights(self, lights):
         pass
 
+    def show_target(self, stop):
+        pass
+
 
 class RosDriver:
     """The real thing: Nav2 through BasicNavigator, pose from TF, lights as RViz markers."""
@@ -213,6 +216,7 @@ class RosDriver:
     def __init__(self):
         self._ready = False
         self._lights = {}
+        self._target = None                  # the stop the robot is guiding to (drawn in RViz)
 
     def start(self):
         import rclpy
@@ -230,7 +234,7 @@ class RosDriver:
         self.tf_listener = TransformListener(self.tf_buffer, self.node)
         self.light_pub = self.node.create_publisher(
             MarkerArray, 'shelf_lights', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
-        self.node.create_timer(0.25, self._publish_lights)
+        self.node.create_timer(0.1, self._publish_lights)   # 10 Hz: a smooth pulse of the lit shelf tag
         executor = SingleThreadedExecutor()
         executor.add_node(self.node)
         threading.Thread(target=executor.spin, daemon=True).start()
@@ -294,36 +298,102 @@ class RosDriver:
     def show_lights(self, lights):
         self._lights = {code: dict(light) for code, light in lights.items()}
 
+    def show_target(self, stop):
+        self._target = dict(stop) if stop else None
+
     def _publish_lights(self):
-        """Each known shelf tag: a small grey lamp when off; a bright pulsing green one when on."""
+        # a drawing problem must never stop the executor thread (it also feeds TF, i.e. the pose)
+        try:
+            self._draw_markers()
+        except Exception as error:                          # noqa: BLE001
+            if not getattr(self, '_draw_failed', False):
+                self._draw_failed = True
+                log.warning(f'RViz markers not drawn: {error!r}')
+                jlog('markers_failed', 'warn', error=repr(error)[:300])
+
+    def _draw_markers(self):
+        """RViz markers for the visit, redrawn 10 times a second: every known shelf tag (a small grey
+        lamp when off, a bright pulsing green one when on) and, for the stop the robot is guiding to,
+        the bay highlighted in the store's orange, its aisle sign, a label, and the 5 m ring in which
+        the shelf light turns on. Colours are the web UI's (ui/themes/aisle)."""
         from visualization_msgs.msg import Marker, MarkerArray
+        from geometry_msgs.msg import Point
         stamp = self.node.get_clock().now().to_msg()
         clear = Marker()
         clear.action = Marker.DELETEALL
         markers = [clear]
         pulse = 0.5 + 0.5 * math.sin(time.time() * 5.0)
+        top = os.environ.get('HD_RVIZ_VIEW', 'top').lower() != '3d'
+        accent, ink, paper = (0.78, 0.306, 0.0), (0.04, 0.07, 0.09), (1.0, 1.0, 1.0)
+        green = (0.082, 0.502, 0.239)
 
-        def add(kind, x, y, z, size, rgba, text=''):
+        def add(kind, x, y, z, size, rgba, text='', ns='shelf_lights', points=None):
             m = Marker()
             m.header.frame_id, m.header.stamp = 'map', stamp
-            m.ns, m.id, m.type, m.action = 'shelf_lights', len(markers), kind, Marker.ADD
+            m.ns, m.id, m.type, m.action = ns, len(markers), kind, Marker.ADD
             m.pose.position.x, m.pose.position.y, m.pose.position.z = float(x), float(y), float(z)
             m.pose.orientation.w = 1.0
-            m.scale.x, m.scale.y, m.scale.z = size
-            m.color.r, m.color.g, m.color.b, m.color.a = rgba
+            m.scale.x, m.scale.y, m.scale.z = (float(v) for v in size)
+            m.color.r, m.color.g, m.color.b, m.color.a = (float(v) for v in rgba)
             m.text = text
+            if points:
+                m.points = [Point(x=float(px), y=float(py), z=0.0) for px, py in points]
             markers.append(m)
+
+        target = self._target
+        if target and top:
+            tx, ty = target['x'], target['y']
+            lx, ly = target.get('light_x', tx), target.get('light_y', ty)
+            # the 5 m ring: inside it the shelf light turns on
+            add(Marker.CYLINDER, tx, ty, 0.07, (2 * NEAR_M, 2 * NEAR_M, 0.01), (*green, 0.10), ns='near_ring')
+            ring = [(tx + NEAR_M * math.cos(a * math.pi / 36), ty + NEAR_M * math.sin(a * math.pi / 36)) for a in range(73)]
+            add(Marker.LINE_STRIP, 0, 0, 0.09, (0.16, 0, 0), (*green, 0.95), ns='near_ring', points=ring)
+            # the bay: the rack section beside the light, outlined (dark; bright green once its light is
+            # on) and filled orange, on top of the rack
+            west = lx < tx
+            cx = lx - layout.RACK_DEPTH / 2 if west else lx + layout.RACK_DEPTH / 2
+            lit = any(light.get('on') and abs(light['x'] - lx) < 0.01 and abs(light['y'] - ly) < 0.01
+                      for light in self._lights.values())
+            rim = 0.5 if lit else 0.3
+            add(Marker.CUBE, cx, ly, 3.70, (layout.RACK_DEPTH + rim, layout.BAY_LENGTH + rim, 0.04),
+                (0.13, 0.9, 0.35, 1.0) if lit else (*ink, 1.0), ns='target_bay')
+            add(Marker.CUBE, cx, ly, 3.74, (layout.RACK_DEPTH, layout.BAY_LENGTH, 0.04), (*accent, 1.0), ns='target_bay')
+            # its aisle's signs turn orange, as on the web map
+            aisle = target.get('aisle')
+            if aisle in layout.DEPARTMENTS:
+                for sy in (layout.FRONT_Y0 - 1.25, layout.BACK_Y1 + 1.25):
+                    add(Marker.CYLINDER, layout.aisle_x(aisle), sy, 4.72, (1.95, 1.95, 0.05), (*accent, 1.0), ns='target_aisle')
+            # a label: the item and where it is, on a white plate beside the bay
+            name = str(target.get('name') or target.get('sku') or '')
+            name = name if len(name) <= 24 else name[:23].rstrip() + '...'
+            where = f"Aisle {target.get('aisle')}, bay {target.get('shelf')}"
+            px = min(max(lx, 7.5), layout.WIDTH - 7.5)
+            py = ly + 3.1 if ly < layout.BACK_Y1 - 3 else ly - 3.1
+            width = max(len(name), len(where)) * 0.78 * 0.62 + 1.0   # RViz draws spaces wide
+            add(Marker.CUBE, px, py, 4.80, (width + 0.3, 2.5, 0.04), (*accent, 1.0), ns='target_label')
+            add(Marker.CUBE, px, py, 4.84, (width, 2.2, 0.04), (*paper, 1.0), ns='target_label')
+            add(Marker.TEXT_VIEW_FACING, px, py, 4.95, (0.0, 0.0, 0.78), (*ink, 1.0), f'{name}\n{where}', ns='target_label')
 
         for code, light in self._lights.items():
             x, y, z = light['x'], light['y'], light['z']
-            if light['on']:
-                add(Marker.SPHERE, x, y, z, (0.3, 0.3, 0.3), (0.1, 1.0, 0.2, 1.0))
+            if top:
+                z = 3.9          # above the racks, so the top view sees all of it
+            if light['on'] and top:
+                # a strong, pulsing green light: a wide soft glow, a ring that breathes, a bright lamp
+                glow = 2.6 + 1.4 * pulse
+                add(Marker.CYLINDER, x, y, z - 0.1, (glow, glow, 0.04), (0.13, 0.9, 0.35, 0.55 - 0.3 * pulse))
+                r = 1.0 + 0.9 * pulse
+                ring = [(x + r * math.cos(a * math.pi / 18), y + r * math.sin(a * math.pi / 18)) for a in range(37)]
+                add(Marker.LINE_STRIP, 0, 0, z + 0.05, (0.14, 0, 0), (*green, 1.0), points=ring)
+                add(Marker.SPHERE, x, y, z + 0.1, (0.95, 0.95, 0.2), (0.13, 0.95, 0.35, 1.0))
+            elif light['on']:
                 glow = 0.7 + 0.6 * pulse
+                add(Marker.SPHERE, x, y, z, (0.3, 0.3, 0.3), (0.1, 1.0, 0.2, 1.0))
                 add(Marker.SPHERE, x, y, z, (glow, glow, glow), (0.1, 1.0, 0.2, 0.35))
                 add(Marker.CYLINDER, x, y, z / 2, (0.06, 0.06, z), (0.1, 1.0, 0.2, 0.5))      # beam down to the floor
                 add(Marker.TEXT_VIEW_FACING, x, y, z + 0.9, (0.0, 0.0, 0.4), (0.1, 1.0, 0.2, 1.0), light.get('label', code))
             else:
-                add(Marker.SPHERE, x, y, z, (0.22, 0.22, 0.22), (0.55, 0.55, 0.55, 0.9))
+                add(Marker.SPHERE, x, y, z, (0.45, 0.45, 0.45) if top else (0.22, 0.22, 0.22), (0.55, 0.55, 0.55, 0.9))
         self.light_pub.publish(MarkerArray(markers=markers))
 
 
@@ -364,6 +434,7 @@ class Tour:
             self.command = {'kind': 'item', 'session_id': session_id, 'stop': stop,
                             'x': stop['x'], 'y': stop['y'], 'yaw': stop['yaw'], 'near_sent': False}
             self.driver.show_lights(self.lights)
+            self.driver.show_target(stop)
         log.info(f'[{session_id}] item {index}/{total}: {stop["name"]} -> aisle {stop["aisle"]}, bay {stop["shelf"]}')
 
     def picked(self, session_id=None):
@@ -387,6 +458,7 @@ class Tour:
                             lights_cleared=lit)
             self.lights.clear()
             self.driver.show_lights(self.lights)
+            self.driver.show_target(None)
             self.command = {'kind': 'home', 'session_id': self.session_id, **HOME}
         log.info(f'[{self.session_id}] visit over ({reason}): returning to the dock')
 

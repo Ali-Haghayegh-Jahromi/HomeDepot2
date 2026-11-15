@@ -33,6 +33,18 @@ BEAMS, RANGE_MAX, RANGE_STEP = 360, 12.0, 0.025
 CMD_TIMEOUT_S = 0.5
 MAX_SPEED, MAX_TURN = 1.5, 2.5          # what the motors can do (Nav2 asks for less)
 ORANGE = (0.976, 0.388, 0.008)          # Home Depot orange
+# The web UI's theme (ui/themes/aisle), so RViz and the stage look like one product
+ACCENT = (0.780, 0.306, 0.0)            # --color-accent  #c74e00
+INK = (0.04, 0.07, 0.09)                # --color-text-primary (dark)
+PAPER = (1.0, 1.0, 1.0)                 # --color-background-surface
+SUCCESS = (0.082, 0.502, 0.239)         # --color-success #15803d (the robot and its light)
+SUCCESS_MUTED = (0.702, 0.890, 0.733)   # --color-success-muted #b3e3bb
+# HD_RVIZ_VIEW=top (the default, for recording): signs and labels drawn to be read from above
+TOP_VIEW = os.environ.get('HD_RVIZ_VIEW', 'top').lower() != '3d'
+# Department names on the top view, in two short lines that fit between two aisle signs
+SHORT_NAMES = {1: 'Lumber\nDecking', 2: 'Building\nMaterials', 3: 'Fasteners', 4: 'Hand\nTools', 5: 'Power\nTools',
+               6: 'Cabinet\nHardware', 7: 'Electrical', 8: 'Lighting', 9: 'Plumbing', 10: 'Kitchen\nBath',
+               11: 'Paint', 12: 'Paint\nSupplies'}
 
 
 def load_map():
@@ -155,7 +167,7 @@ class SimRobot(Node):
             add(Marker.CUBE, ns, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, x1 - x0, y1 - y0, z1 - z0, rgb, alpha)
 
         # Floor
-        box('floor', 0, 0, L.WIDTH, L.DEPTH, -0.06, -0.01, (0.80, 0.80, 0.78))
+        box('floor', 0, 0, L.WIDTH, L.DEPTH, -0.06, -0.01, (0.90, 0.90, 0.88) if TOP_VIEW else (0.80, 0.80, 0.78))
         # Racks: orange uprights and beams, with grey shelf levels full of "stock"
         for x0, y0, x1, y1 in L.rack_boxes():
             for level in (0.15, 1.0, 1.85, 2.7):
@@ -167,35 +179,88 @@ class SimRobot(Node):
                 yy = y0 + i * (y1 - y0) / n
                 for xx in (x0, x1 - 0.08):
                     box('rack_post', xx, yy - 0.04, xx + 0.08, yy + 0.04, 0.0, 3.6, ORANGE)
-        # Aisle signs
-        for a in range(1, L.N_AISLES + 1):
-            for y in (L.FRONT_Y0 - 0.6, L.BACK_Y1 + 0.6):
-                box('aisle_sign', L.aisle_x(a) - 1.1, y - 0.05, L.aisle_x(a) + 1.1, y + 0.05, 3.7, 4.7, ORANGE)
-                add(Marker.TEXT_VIEW_FACING, 'aisle_number', L.aisle_x(a), y, 5.3, 0, 0, 0.9, (1.0, 1.0, 1.0), 1.0, str(a))
-                add(Marker.TEXT_VIEW_FACING, 'aisle_name', L.aisle_x(a), y, 4.2, 0, 0, 0.32, (1.0, 1.0, 1.0), 1.0,
-                    L.DEPARTMENTS[a])
-        # Front of the store
-        for x0, y0, x1, y1, label in L.FRONT_OBSTACLES:
-            if label == 'kiosk':
-                box('kiosk', x0, y0, x1, y1, 0.0, 1.1, (0.15, 0.15, 0.17))
-                box('kiosk', x0 + 0.05, y1 - 0.02, x1 - 0.05, y1 + 0.06, 1.1, 1.9, ORANGE)       # screen
-                add(Marker.TEXT_VIEW_FACING, 'label', (x0 + x1) / 2, (y0 + y1) / 2, 2.3, 0, 0, 0.35,
-                    (1.0, 1.0, 1.0), 1.0, 'HELP KIOSK')
-            else:
-                box('front', x0, y0, x1, y1, 0.0, 1.0, (0.35, 0.35, 0.38))
-                add(Marker.TEXT_VIEW_FACING, 'label', (x0 + x1) / 2, (y0 + y1) / 2, 1.5, 0, 0, 0.35,
-                    (1.0, 1.0, 1.0), 1.0, label.upper())
-        # The robot's dock beside the kiosk
-        add(Marker.CYLINDER, 'dock', L.DOCK[0], L.DOCK[1], 0.01, 1.1, 1.1, 0.02, (0.10, 0.75, 0.25), 0.9)
-        add(Marker.TEXT_VIEW_FACING, 'label', L.DOCK[0], L.DOCK[1] - 0.9, 0.4, 0, 0, 0.28, (0.10, 0.75, 0.25), 1.0,
-            'ROBOT DOCK')
+        if TOP_VIEW:
+            self.top_view_signs(add, box)
+        else:
+            # Aisle signs
+            for a in range(1, L.N_AISLES + 1):
+                for y in (L.FRONT_Y0 - 0.6, L.BACK_Y1 + 0.6):
+                    box('aisle_sign', L.aisle_x(a) - 1.1, y - 0.05, L.aisle_x(a) + 1.1, y + 0.05, 3.7, 4.7, ORANGE)
+                    add(Marker.TEXT_VIEW_FACING, 'aisle_number', L.aisle_x(a), y, 5.3, 0, 0, 0.9, (1.0, 1.0, 1.0), 1.0,
+                        str(a))
+                    add(Marker.TEXT_VIEW_FACING, 'aisle_name', L.aisle_x(a), y, 4.2, 0, 0, 0.32, (1.0, 1.0, 1.0), 1.0,
+                        L.DEPARTMENTS[a])
+            # Front of the store
+            for x0, y0, x1, y1, label in L.FRONT_OBSTACLES:
+                if label == 'kiosk':
+                    box('kiosk', x0, y0, x1, y1, 0.0, 1.1, (0.15, 0.15, 0.17))
+                    box('kiosk', x0 + 0.05, y1 - 0.02, x1 - 0.05, y1 + 0.06, 1.1, 1.9, ORANGE)       # screen
+                    add(Marker.TEXT_VIEW_FACING, 'label', (x0 + x1) / 2, (y0 + y1) / 2, 2.3, 0, 0, 0.35,
+                        (1.0, 1.0, 1.0), 1.0, 'HELP KIOSK')
+                else:
+                    box('front', x0, y0, x1, y1, 0.0, 1.0, (0.35, 0.35, 0.38))
+                    add(Marker.TEXT_VIEW_FACING, 'label', (x0 + x1) / 2, (y0 + y1) / 2, 1.5, 0, 0, 0.35,
+                        (1.0, 1.0, 1.0), 1.0, label.upper())
+            # The robot's dock beside the kiosk
+            add(Marker.CYLINDER, 'dock', L.DOCK[0], L.DOCK[1], 0.01, 1.1, 1.1, 0.02, (0.10, 0.75, 0.25), 0.9)
+            add(Marker.TEXT_VIEW_FACING, 'label', L.DOCK[0], L.DOCK[1] - 0.9, 0.4, 0, 0, 0.28, (0.10, 0.75, 0.25), 1.0,
+                'ROBOT DOCK')
         # Outer walls, low and see-through so the camera can look in
         t = L.WALL
         for x0, y0, x1, y1 in ((0, 0, L.ENTRANCE[0], t), (L.ENTRANCE[1], 0, L.WIDTH, t), (0, L.DEPTH - t, L.WIDTH, L.DEPTH),
                                (0, 0, t, L.DEPTH), (L.WIDTH - t, 0, L.WIDTH, L.DEPTH)):
             box('wall', x0, y0, x1, y1, 0.0, 4.0, (0.55, 0.57, 0.60), 0.35)
-        add(Marker.TEXT_VIEW_FACING, 'label', sum(L.ENTRANCE) / 2, 0.6, 2.6, 0, 0, 0.5, (1.0, 1.0, 1.0), 1.0, 'ENTRANCE')
+        if not TOP_VIEW:
+            add(Marker.TEXT_VIEW_FACING, 'label', sum(L.ENTRANCE) / 2, 0.6, 2.6, 0, 0, 0.5, (1.0, 1.0, 1.0), 1.0,
+                'ENTRANCE')
+        # The robot, big enough to find in a top view of the whole store: a green disc with a white
+        # rim under the robot model, and a dark heading arrow in front of it (above the model), all
+        # locked to the robot's own frame, so RViz moves them with TF.
+        for kind, z, sx, sy, sz, rgb, x in ((Marker.CYLINDER, 0.05, 1.9, 1.9, 0.02, PAPER, 0.0),
+                                            (Marker.CYLINDER, 0.065, 1.6, 1.6, 0.02, SUCCESS, 0.0),
+                                            (Marker.ARROW, 1.9, 1.05, 0.32, 0.7, INK, 0.3)):
+            m = Marker()
+            m.header.frame_id = 'base_footprint'        # stamp 0: always the newest pose
+            m.ns, m.id, m.type, m.action = 'robot_footprint', len(markers), kind, Marker.ADD
+            m.frame_locked = True
+            m.pose.position.x, m.pose.position.z = x, z
+            m.pose.orientation.w = 1.0
+            m.scale.x, m.scale.y, m.scale.z = sx, sy, sz
+            m.color.r, m.color.g, m.color.b = rgb
+            m.color.a = 1.0 if TOP_VIEW else 0.0
+            markers.append(m)
+        if not TOP_VIEW:
+            markers = markers[:-3]
         return MarkerArray(markers=markers)
+
+    def top_view_signs(self, add, box):
+        """Store labels for the top view: dark aisle numbers on white signs, department names,
+        the kiosk, the dock, the registers and the entrance, all large enough for a recording."""
+        for a in range(1, L.N_AISLES + 1):
+            x = L.aisle_x(a)
+            for y in (L.FRONT_Y0 - 1.25, L.BACK_Y1 + 1.25):
+                add(Marker.CYLINDER, 'aisle_sign', x, y, 4.60, 2.25, 2.25, 0.05, INK)          # dark rim
+                add(Marker.CYLINDER, 'aisle_sign', x, y, 4.65, 1.95, 1.95, 0.05, PAPER)
+                add(Marker.TEXT_VIEW_FACING, 'aisle_number', x, y, 4.9, 0, 0, 1.35, INK, 1.0, str(a))
+            add(Marker.TEXT_VIEW_FACING, 'aisle_name', x, L.FRONT_Y0 - 3.4, 4.9, 0, 0, 0.72, INK, 1.0, SHORT_NAMES[a])
+        for x0, y0, x1, y1, label in L.FRONT_OBSTACLES:
+            if label == 'kiosk':
+                box('kiosk', x0, y0, x1, y1, 0.0, 1.1, ACCENT)
+                add(Marker.TEXT_VIEW_FACING, 'label', x0 - 1.9, (y0 + y1) / 2, 4.9, 0, 0, 0.62, ACCENT, 1.0, 'HELP\nKIOSK')
+            else:
+                box('front', x0, y0, x1, y1, 0.0, 1.0, (0.40, 0.42, 0.45))
+                # one word per line: RViz draws spaces very wide
+                name = label.split(' ')[-1] if label.startswith('register') else '\n'.join(label.upper().split(' ')[-2:])
+                add(Marker.TEXT_VIEW_FACING, 'label', (x0 + x1) / 2, (y0 + y1) / 2, 4.9, 0, 0,
+                    0.75 if label.startswith('register') else 0.55, PAPER, 1.0, name)
+        regs = [o for o in L.FRONT_OBSTACLES if o[4].startswith('register')]
+        add(Marker.TEXT_VIEW_FACING, 'label', (regs[0][0] + regs[-1][2]) / 2, 1.05, 4.9, 0, 0, 0.55, INK, 1.0,
+            'REGISTERS')
+        # the dock: a green pad with a dark ring; its label below it
+        add(Marker.CYLINDER, 'dock', L.DOCK[0], L.DOCK[1], 0.01, 2.3, 2.3, 0.02, SUCCESS)
+        add(Marker.CYLINDER, 'dock', L.DOCK[0], L.DOCK[1], 0.02, 2.0, 2.0, 0.02, SUCCESS_MUTED)
+        add(Marker.TEXT_VIEW_FACING, 'label', L.DOCK[0] + 2.4, L.DOCK[1], 4.9, 0, 0, 0.62, SUCCESS, 1.0, 'ROBOT\nDOCK')
+        add(Marker.TEXT_VIEW_FACING, 'label', sum(L.ENTRANCE) / 2, 0.75, 4.9, 0, 0, 0.62, INK, 1.0, 'ENTRANCE')
 
 
 def main():
