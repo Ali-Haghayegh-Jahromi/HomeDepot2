@@ -193,6 +193,7 @@ export function useStage() {
       }
       setKiosk({ kind: 'visit', session: id, link })
       setSessionParam(id)
+      setLog([]) // each visit (each recording take) starts with a clean event log
       setPhone(null)
       lastScreen.current = null
       setFlow('start')
@@ -289,6 +290,7 @@ export function useStage() {
         if (!res.ok) {
           // the visit is gone (./reset.sh between takes): back to the kiosk's start screen
           if (res.error.error === 'unknown_session') {
+            setLog([])
             say('kiosk', 'That visit no longer exists (the demo was reset). Ready for the next customer.')
             resetKiosk()
           }
