@@ -203,7 +203,7 @@ With a photo (`image_base64`) and no text, the AI works from the photo: it says 
 {
   "session_id": "k7m2x9qa4h",
   "screen": "sorry",
-  "message": "Sorry, we can't help with that. Your request isn't related to what this service helps with.",
+  "message": "I can only help with repairs and projects using items from this store. Tell me what you're fixing, or send a photo of it.",
   "data": {}
 }
 ```
