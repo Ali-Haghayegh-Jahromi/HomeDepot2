@@ -233,7 +233,7 @@ export function useStage() {
               'POST /tour/start',
             )
           if (r.state === 'waiting_for_pick')
-            say('robot', 'Arrived at the shelf. The phone now shows “I am done”.', '/robot/event arrived')
+            say('robot', 'Arrived at the shelf and told n8n.', '/robot/event arrived')
           if (r.state === 'returning_home') say('robot', 'Visit over. Heading back to the dock.', 'POST /tour/done')
           if (r.state === 'done') {
             say('robot', 'Back on the dock beside the kiosk.', '/robot/event home')

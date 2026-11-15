@@ -42,8 +42,8 @@ You may close that window; the demo keeps running.
 ## 4. Give the demo
 
 1. On the kiosk press **I'm here, I need help**. The QR code appears and the phone opens.
-2. On the phone, first type something unrelated ("tell me a joke") to show that the AI refuses it. Then a real problem: "one of the boards on my deck is cracked".
-3. Answer the follow-up questions. Tick the items you want and press **Guide me**.
+2. On the phone, first type something unrelated ("tell me a joke") to show that the AI refuses it. Then a real problem: "one of the boards on my deck is cracked", best with a photo (the camera or the picture buttons under the text box): the phone shows what the AI sees in it.
+3. Answer the follow-up questions. Tick the items you want and press **Guide me**. (If the AI is busy for a moment, the message shows **Try again**: one tap sends it again, photo included.)
 4. Watch the robot leave its dock on the map and in the 3D view. The shelf light turns on when the robot is 5 m away; **I am done** appears when it arrives.
 5. After the last item, answer **No** to get repair steps and videos; the robot drives back to its dock.
 
@@ -68,7 +68,7 @@ After that the page opens normally, and the phone asks once for permission to us
 
 ## 6. Record the demo
 
-Open the **studio view**: http://localhost:8000/demo/?view=studio (or the **Studio view** button at the top of the demo stage). It is made for a 1920 x 1080 screen recording: kiosk, the customer's phone (mirrored live from a real phone), the robot's live view from RViz, the robot's status and every step as it happens, under the story strip. Make the browser window full screen (F11 on Ubuntu, Control-Command-F on a Mac) and record the screen. The switch above the robot view shows the web map instead of RViz. If RViz is switched off or still starting, the web map is shown by itself.
+Open the **studio view**: http://localhost:8000/demo/?view=studio (or the **Studio view** button at the top of the demo stage). It is made for a 1920 x 1080 screen recording: kiosk, the customer's phone (mirrored live from a real phone), the robot's live view from RViz, the robot's status and every step as it happens, under the story strip. Make the browser window full screen (F11 on Ubuntu, Control-Command-F on a Mac) and record the screen. The list of live events shows which decision n8n took at each step. A full plan for a 3-minute recording (what to tap, what to say, a checklist, what to do if something goes wrong) is in [DEMO_SCRIPT.md](DEMO_SCRIPT.md). The switch above the robot view shows the web map instead of RViz. If RViz is switched off or still starting, the web map is shown by itself.
 
 ## 7. Stop the demo
 
