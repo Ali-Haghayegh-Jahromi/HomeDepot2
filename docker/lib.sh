@@ -337,6 +337,25 @@ n8n_owner() {   # creates the n8n owner account on a new n8n; sets N8N_LOGIN_OK 
   fi
 }
 
+n8n_clear_executions() {   # deletes the past runs of the demo's four workflows (n8n's Executions list); true if all went
+  base=http://localhost:$N8N_PORT
+  jar=$(mktemp 2>/dev/null) || jar="${TMPDIR:-/tmp}/hd_n8n_cookie.$$"
+  email=$(env_get N8N_OWNER_EMAIL); pw=$(env_get N8N_OWNER_PASSWORD)
+  login=$(printf '{"emailOrLdapLoginId":"%s","password":"%s"}' "$(json_escape "$email")" "$(json_escape "$pw")")
+  code=$(printf '%s' "$login" | curl -s -c "$jar" -o /dev/null -w '%{http_code}' --max-time 20 -X POST \
+    -H 'Content-Type: application/json' --data-binary @- "$base/rest/login")
+  if [ "$code" != 200 ]; then rm -f "$jar"; return 1; fi
+  before=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+  ok=yes
+  for wf in hdGuideRobot00001 hdAskAiModel0001 hdPhoneStatus001 hdIdleCheck00001; do
+    code=$(curl -s -b "$jar" -o /dev/null -w '%{http_code}' --max-time 600 -X POST -H 'Content-Type: application/json' \
+      --data-binary "{\"filters\":{\"workflowId\":\"$wf\"},\"deleteBefore\":\"$before\"}" "$base/rest/executions/delete")
+    [ "$code" = 200 ] || ok=no
+  done
+  rm -f "$jar"
+  [ "$ok" = yes ]
+}
+
 gemini_key_state() {   # what n8n has saved as the Gemini key: real | placeholder | missing (never prints the key)
   key_state hdGeminiApiKey001
 }

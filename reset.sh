@@ -1,7 +1,8 @@
 #!/bin/bash
-# Back to a clean demo: deletes all visits (sessions, requests, messages, the event log) and the
-# log files, and sends the robot back to its dock. Keeps the store items, the API key, the n8n login
-# and the workflow. (n8n's own list of past executions is kept too.)
+# Back to a clean demo: deletes all visits (sessions, requests, messages, the event log), the log
+# files and n8n's list of past runs of the demo's workflows (so its Executions list shows only the
+# next take), and sends the robot back to its dock. Keeps the store items, the API key, the n8n
+# login and the workflows.
 #   ./reset.sh               asks first (answer y or yes)
 #   ./reset.sh -y            no question
 #   ./reset.sh --everything  start over from scratch: deletes ALL the demo's data on this computer (the
@@ -50,7 +51,7 @@ hd_check_docker
 [ -n "$(dc ps -q postgres 2>/dev/null)" ] || die "The demo is not running: start it with ./start.sh, then reset."
 
 if [ "${1:-}" != -y ]; then
-  say "This deletes every visit and all logs of the demo (the store items, API key and n8n login stay)."
+  say "This deletes every visit, all logs and n8n's past runs of the demo (the store items, API key and n8n login stay)."
   printf 'Continue? Type y (or yes) and press Enter: '
   read -r answer
   case "$answer" in y|Y|yes|Yes|YES) ;; *) say "Nothing changed."; exit 0 ;; esac
@@ -59,6 +60,8 @@ fi
 say "Deleting visits..."
 dc exec -T postgres sh -c 'psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TRUNCATE messages, requests, sessions, event_log RESTART IDENTITY CASCADE"' \
   || die "Could not delete the visits (see the message above)."
+say "Deleting n8n's past runs of the demo..."
+n8n_clear_executions || info "Could not clear n8n's list of past runs (n8n not logged in?): the visits are deleted anyway."
 say "Deleting logs and restarting the robot at its dock..."
 dc stop robot >/dev/null 2>&1
 dc run --rm --no-deps -T --entrypoint sh robot -c 'rm -f /hd/logs/*.log /hd/logs/*.jsonl /hd/logs/*.jsonl.1' >/dev/null 2>&1

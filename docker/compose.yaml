@@ -56,6 +56,12 @@ services:
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"  # no questionnaire after the first login
       N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      # n8n's own database (SQLite in the volume) keeps every run; without pruning it grew past 5 GB.
+      # Runs older than 72 hours go, at most 2000 are kept, and the file shrinks back at each start.
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "72"
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: "2000"
+      DB_SQLITE_VACUUM_ON_STARTUP: "true"
     volumes:
       - hd_n8ndata:/home/node/.n8n
     healthcheck:
