@@ -1,0 +1,5 @@
+logs/
+__pycache__/
+# settings, passwords and the Gemini API key (made by ./start.sh from docker/env.template)
+.env
+.env.tmp
