@@ -3,3 +3,9 @@ __pycache__/
 # settings, passwords and the Gemini API key (made by ./start.sh from docker/env.template)
 .env
 .env.tmp
+
+# free-licence test photos from Wikimedia Commons (see test_photos/CREDITS.md); kept out of the repo
+test_photos/
+
+# drawn test photos (tools/make_test_photos.py makes them again)
+tools/photos/
