@@ -56,11 +56,11 @@ Every phone webhook answers with the same shape, which tells the phone page what
   "aisle": 3,
   "shelf": 4,
   "role": "main",
-  "reason": "Holds the new deck board to the joists; fits your budget."
+  "reason": "Holds the new board to the joists for years."
 }
 ```
 
-`reason` (string) is the AI's one-line "why this item"; `role` (string) is what the item is for in the job:
+`reason` (string) is the AI's short "why this item" (its first sentence, at most 60 characters, cut at a comma or a word boundary; a tool's ends with "Skip it if you already own one."); `role` (string) is what the item is for in the job:
 
 | `role` | Meaning |
 |---|---|
