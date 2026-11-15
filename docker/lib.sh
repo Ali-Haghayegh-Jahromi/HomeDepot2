@@ -242,7 +242,7 @@ port_taken_by_other() {   # true if something that is not this demo listens on t
 hd_check_ports() {   # lists every port of the demo that another program uses, with the lines for .env; stops then
   busy=; lines=; taken=" $DEMO_PORT $N8N_PORT $RVIZ_PORT $HTTPS_PORT "
   for spec in "$DEMO_PORT:HD_DEMO_PORT:the demo pages" "$N8N_PORT:HD_N8N_PORT:n8n" \
-              "$RVIZ_PORT:HD_RVIZ_PORT:the robot view (RViz)" "$HTTPS_PORT:HD_HTTPS_PORT:https for phones"; do
+              "$RVIZ_PORT:HD_RVIZ_PORT:the robot view, RViz" "$HTTPS_PORT:HD_HTTPS_PORT:https for phones"; do
     port=${spec%%:*}; rest=${spec#*:}; name=${rest%%:*}; what=${rest#*:}
     port_taken_by_other "$port" || continue
     # suggest the next port that is free and not used by another part of the demo
