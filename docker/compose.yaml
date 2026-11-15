@@ -1,0 +1,116 @@
+# The whole Aisle Guide demo as one Docker Compose project, on its own network.
+# Normally started by ./start.sh (which also sets up n8n); by hand, from the repo folder:
+#   docker compose -f docker/compose.yaml --env-file .env up -d --build
+#   (add --profile offline to also run the stand-in AI)
+#
+# Inside the network the services reach each other by name:
+#   n8n -> http://robot:8000     robot -> http://n8n:5678     n8n credentials -> postgres:5432
+#   n8n -> http://fake-ai:8010 (stand-in AI, profile "offline")
+# Only these are published on this computer (127.0.0.1 unless HD_DEMO_BIND says otherwise):
+#   n8n ${HD_N8N_PORT:-5678}, demo pages ${HD_DEMO_PORT:-8000}, RViz in the browser ${HD_RVIZ_PORT:-6080},
+#   demo pages over https for phones ${HD_HTTPS_PORT:-8443} (answers only with HD_HTTPS=yes)
+# HD_DEMO_BIND (0.0.0.0 with HD_LAN=yes) and HD_PUBLIC_ADDR (the address phones use) are set by
+# the scripts (docker/lib.sh), not in .env.
+#
+# The project name and the volume names match the earlier setup, so its database, n8n login
+# and saved credentials carry over (volumes homedepot_hd_pgdata, homedepot_hd_n8ndata).
+name: homedepot
+
+services:
+  postgres:
+    image: postgres:16.16
+    container_name: ${HD_NAME_PREFIX:-hd}_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?run ./start.sh to create .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ./start.sh to create .env}
+      POSTGRES_DB: ${POSTGRES_DB:-homedepot}
+      HD_LLM_READER_PASSWORD: ${HD_LLM_READER_PASSWORD:?run ./start.sh to create .env}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - hd_pgdata:/var/lib/postgresql/data
+      - ../database/init:/docker-entrypoint-initdb.d:ro   # runs once, on an empty database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.47.7
+    container_name: ${HD_NAME_PREFIX:-hd}_n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${HD_N8N_PORT:-5678}:5678"
+    environment:
+      GENERIC_TIMEZONE: ${TZ:-UTC}
+      TZ: ${TZ:-UTC}
+      N8N_HOST: localhost
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:${HD_N8N_PORT:-5678}/
+      N8N_SECURE_COOKIE: "false"            # plain http on this computer
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"  # no questionnaire after the first login
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+    volumes:
+      - hd_n8ndata:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+  robot:
+    build:
+      context: ..
+      dockerfile: docker/robot.Dockerfile
+      args:
+        HD_FRONTEND: ${HD_FRONTEND:-auto}
+      labels:
+        hd.source: ${HD_SOURCE_FP:-unknown}  # start.sh rebuilds only when the sources changed
+    image: ${HD_IMAGE:-hd-demo-robot:latest}
+    container_name: ${HD_NAME_PREFIX:-hd}_robot
+    restart: unless-stopped
+    init: true
+    shm_size: 512m                          # ROS 2 (Fast DDS) shared memory
+    environment:
+      HD_N8N_URL: http://n8n:5678
+      HD_MODE: ${HD_MODE:-ros}              # ros, or mock (no simulation: the service pretends to drive)
+      HD_RVIZ: ${HD_RVIZ:-yes}
+      HD_RVIZ_VIEW: ${HD_RVIZ_VIEW:-top}    # top (2D top view for recording) or 3d
+      HD_RVIZ_PUBLIC_PORT: ${HD_RVIZ_PORT:-6080}   # tells the stage's studio view where RViz is
+      HD_HTTPS: ${HD_HTTPS:-no}             # yes: https on 8443 for phones (voice notes need it)
+      HD_PUBLIC_HOST: ${HD_PUBLIC_ADDR:-localhost}  # goes into the self-signed certificate
+      HD_PHONE_BASE: ${HD_PHONE_BASE:-}     # e.g. http://192.168.1.20:8000 in LAN mode (for the stage's QR code)
+      ROS_DOMAIN_ID: "42"                   # the real Dingo uses 0; ROS stays inside this container
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${HD_DEMO_BIND:-127.0.0.1}:${HD_DEMO_PORT:-8000}:8000"
+      - "127.0.0.1:${HD_RVIZ_PORT:-6080}:6080"
+      - "${HD_DEMO_BIND:-127.0.0.1}:${HD_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ${HD_LOGS_DIR:-../logs}:/hd/logs
+      - hd_tls:/hd/tls                      # the self-signed certificate (kept, so phones accept it once)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+
+  fake-ai:                                  # stand-in for Gemini: ./start.sh in offline mode
+    profiles: [offline]
+    image: ${HD_IMAGE:-hd-demo-robot:latest}
+    pull_policy: never                      # built for the robot service above
+    container_name: ${HD_NAME_PREFIX:-hd}_fake_ai
+    restart: unless-stopped
+    entrypoint: ["python3", "/opt/hd/fake_ai.py"]
+
+volumes:
+  hd_pgdata:
+  hd_n8ndata:
+  hd_tls:

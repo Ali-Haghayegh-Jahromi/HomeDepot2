@@ -1,0 +1,14 @@
+# For developers: the robot container uses the source folders from this computer instead of
+# the copies baked into the image, so a change needs only a restart, not a rebuild:
+#   HD_DEV=yes ./start.sh          then after editing:  docker restart hd_robot
+# (The demo pages stay the built ones; for the front end use `npm run dev` in ui/.)
+services:
+  robot:
+    volumes:
+      - ../store:/hd/store:ro
+      - ../robot/sim:/hd/robot/sim:ro
+      - ../robot/robot_service:/hd/robot/robot_service:ro
+      - ../tools:/hd/tools:ro
+  fake-ai:
+    volumes:
+      - ../n8n/test:/hd/n8n/test:ro

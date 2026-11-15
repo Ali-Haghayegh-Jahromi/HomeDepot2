@@ -1,0 +1,160 @@
+# RViz for recording (HD_RVIZ_VIEW=top, the default): a top view of the whole 60 x 40 m store,
+# drawn like the web map on the demo stage (x to the right, y to the back of the store: the
+# entrance and registers at the bottom, aisle 1 on the left), filling the 1920x1080 screen that
+# noVNC shows. No panels; the entrypoint switches RViz to full screen (F11), which also hides the
+# menu, the toolbar and the status bar. The 3D camera is in record-3d.rviz (HD_RVIZ_VIEW=3d).
+# The topics are the same as in robot/sim/store.rviz.
+Panels: []
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.2
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: true
+      Enabled: true
+      Name: Store map (Nav2)
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Store (racks, kiosk, dock, signs)
+      Namespaces: {}
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /store/markers
+      Value: true
+    - Alpha: 0.45
+      Class: rviz_default_plugins/LaserScan
+      Color: 80; 170; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Laser scan
+      Size (Pixels): 2
+      Size (m): 0.04
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /scan
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 0; 176; 80
+      Enabled: true
+      Line Style: Billboards
+      Line Width: 0.32
+      Name: Planned route
+      Pose Style: None
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /plan
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Shelf-tag lights
+      Namespaces: {}
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /shelf_lights
+      Value: true
+    # a big arrow on the robot (where AMCL thinks it is, pointing the way it faces), so the robot
+    # is easy to find in the top view of the whole store
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.1
+      Class: rviz_default_plugins/PoseWithCovariance
+      Color: 0; 120; 60
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: false
+        Position:
+          Alpha: 0.3
+          Color: 204; 51; 204
+          Scale: 1
+          Value: false
+        Value: false
+      Enabled: true
+      Head Length: 0.6
+      Head Radius: 0.45
+      Name: Robot heading
+      Shaft Length: 1.1
+      Shaft Radius: 0.16
+      Shape: Arrow
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /amcl_pose
+      Value: true
+    - Alpha: 1
+      Class: rviz_default_plugins/RobotModel
+      Description Source: Topic
+      Description Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Enabled: true
+      Name: Guide robot
+      Visual Enabled: true
+      Value: true
+  Enabled: true
+  Global Options:
+    # the theme's dark neutral (--color-background-inverted), as around the studio view's RViz frame
+    Background Color: 10; 19; 23
+    Fixed Frame: map
+    Frame Rate: 12
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Angle: 0
+      Name: Current View
+      Near Clip Distance: 0.01
+      # pixels per metre: 40 m of store depth = 1000 px of the 1080 px screen
+      Scale: 25
+      Target Frame: <Fixed Frame>
+      Value: TopDownOrtho (rviz_default_plugins)
+      X: 30
+      Y: 20
+    Saved: ~
+Window Geometry:
+  Height: 1080
+  Hide Left Dock: true
+  Hide Right Dock: true
+  Width: 1920
+  X: 0
+  Y: 0

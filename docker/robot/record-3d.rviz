@@ -1,0 +1,184 @@
+# RViz for recording, 3D (HD_RVIZ_VIEW=3d): the displays and the "Whole store" camera of
+# robot/sim/store.rviz, without panels, filling the 1920x1080 screen that noVNC shows (the
+# entrypoint switches RViz to full screen). Drag in the browser to turn the view, scroll to zoom.
+Panels: []
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.35
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: true
+      Enabled: true
+      Name: Store map (Nav2)
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Store (racks, kiosk, dock, signs)
+      Namespaces: {}
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /store/markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Shelf-tag lights
+      Namespaces: {}
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /shelf_lights
+      Value: true
+    - Alpha: 1
+      Class: rviz_default_plugins/RobotModel
+      Description Source: Topic
+      Description Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Enabled: true
+      Name: Guide robot
+      Visual Enabled: true
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 25; 227; 107
+      Enabled: true
+      Line Style: Billboards
+      Line Width: 0.2
+      Name: Planned route
+      Pose Style: None
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /plan
+      Value: true
+    - Alpha: 0.8
+      Class: rviz_default_plugins/LaserScan
+      Color: 80; 170; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Laser scan
+      Size (Pixels): 3
+      Size (m): 0.05
+      Style: Points
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /scan
+      Value: true
+    - Alpha: 0.5
+      Class: rviz_default_plugins/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: false
+      Name: Local costmap
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/costmap
+      Value: false
+  Enabled: true
+  Global Options:
+    Background Color: 10; 19; 23
+    Fixed Frame: map
+    Frame Rate: 12
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /goal_pose
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 57
+      Focal Point:
+        X: 30
+        Y: 17.5
+        Z: 0
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 0.82
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz_default_plugins)
+      Yaw: 4.71
+    Saved:
+      - Class: rviz_default_plugins/Orbit
+        Distance: 52
+        Focal Point:
+          X: 30
+          Y: 16
+          Z: 0
+        Name: Whole store
+        Near Clip Distance: 0.01
+        Pitch: 0.82
+        Target Frame: <Fixed Frame>
+        Value: Orbit (rviz_default_plugins)
+        Yaw: 4.71
+      - Class: rviz_default_plugins/ThirdPersonFollower
+        Distance: 9
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Name: Follow the robot
+        Near Clip Distance: 0.01
+        Pitch: 0.45
+        Target Frame: base_link
+        Value: ThirdPersonFollower (rviz_default_plugins)
+        Yaw: 3.14
+      - Class: rviz_default_plugins/TopDownOrtho
+        Angle: 0
+        Name: Top-down plan
+        Near Clip Distance: 0.01
+        Scale: 22
+        Target Frame: <Fixed Frame>
+        Value: TopDownOrtho (rviz_default_plugins)
+        X: 30
+        Y: 20
+Window Geometry:
+  Height: 1080
+  Hide Left Dock: true
+  Hide Right Dock: true
+  Width: 1920
+  X: 0
+  Y: 0

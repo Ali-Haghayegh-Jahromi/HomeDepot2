@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aisle Guide · Demo Stage</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  .top { display: flex; align-items: center; gap: 14px; padding: 12px 22px; background: var(--ink); color: #fff; }
+  .top .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--orange); display: grid; place-items: center; font-weight: 900; }
+  .top h1 { font-size: 18px; margin: 0; }
+  .top p { margin: 0; font-size: 12.5px; opacity: .65; }
+  .top .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .top .pill { background: rgba(255,255,255,.12); color: #fff; }
+  .top .pill.ok { background: rgba(18,161,80,.25); color: #7df0ae; }
+  .top .pill.bad { background: rgba(192,57,43,.3); color: #ffb3aa; }
+
+  .stage { flex: 1; display: grid; grid-template-columns: 300px 400px 1fr; gap: 16px; padding: 16px 22px; min-height: 0; }
+  .panel { background: var(--paper); border-radius: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.06); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .panel > h2 { margin: 0; padding: 12px 16px; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .panel > h2 b { background: var(--ink); color: #fff; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; }
+
+  /* kiosk */
+  .kiosk { flex: 1; background: linear-gradient(180deg, #2a2a2d, #151517); margin: 14px; border-radius: 18px; padding: 18px; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; border: 6px solid #0c0c0d; }
+  .kiosk h3 { font-size: 22px; margin: 0; line-height: 1.25; }
+  .kiosk p { margin: 0; opacity: .7; font-size: 13.5px; line-height: 1.45; }
+  .help { background: var(--orange); color: #fff; border-radius: 22px; padding: 22px 18px; font-size: 20px; font-weight: 900; width: 100%; box-shadow: 0 8px 0 var(--orange-dark), 0 14px 30px rgba(249,99,2,.35); transition: transform .08s, box-shadow .08s; }
+  .help:active { transform: translateY(6px); box-shadow: 0 2px 0 var(--orange-dark); }
+  .qr { background: #fff; padding: 10px; border-radius: 14px; width: 200px; height: 200px; display: grid; place-items: center; }
+  .qr img { width: 180px; height: 180px; }
+  .kiosk a { color: #ffb27d; font-size: 11.5px; word-break: break-all; }
+  .kiosk .again { background: transparent; color: #fff; opacity: .6; font-size: 12.5px; text-decoration: underline; }
+  .dockline { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 0 16px 14px; color: var(--muted); }
+
+  /* phone */
+  .phonewrap { flex: 1; display: grid; place-items: center; padding: 12px; min-height: 0; background: #ececea; }
+  .phone { height: 100%; max-height: 780px; aspect-ratio: 9 / 18.5; background: #0c0c0d; border-radius: 38px; padding: 10px; box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+  .phone iframe, .phone .idle { width: 100%; height: 100%; border: 0; border-radius: 29px; background: var(--page); }
+  .phone .idle { display: grid; place-items: center; text-align: center; color: var(--muted); padding: 30px; font-size: 14px; line-height: 1.5; }
+
+  /* store */
+  .storehead { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); align-items: center; }
+  .storehead .what { font-weight: 700; font-size: 14px; margin-right: auto; }
+  .mapbox { flex: 1; min-height: 0; padding: 8px 14px; display: grid; place-items: center; }
+  .mapbox svg { width: 100%; height: 100%; }
+  .flow { display: flex; gap: 4px; padding: 12px 14px; border-top: 1px solid var(--line); }
+  .flow div { flex: 1; text-align: center; font-size: 10.5px; font-weight: 700; color: #a6a9af; padding: 8px 2px; border-radius: 9px; background: #f3f3f1; line-height: 1.2; transition: all .25s; }
+  .flow div.done { background: var(--green-soft); color: var(--green); }
+  .flow div.now { background: var(--orange); color: #fff; transform: translateY(-2px); box-shadow: 0 6px 14px rgba(249,99,2,.35); }
+  .log { height: 104px; overflow: auto; padding: 8px 16px; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: #50545b; border-top: 1px solid var(--line); background: #fafaf9; }
+  .log b { color: var(--orange-dark); }
+  .log i { color: var(--green); font-style: normal; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo">A</div>
+  <div><h1>Aisle Guide</h1><p>Describe your repair. The AI finds what you need. The robot walks you to it.</p></div>
+  <div class="right">
+    <span class="pill" id="p-n8n"><span class="dot"></span> n8n workflow</span>
+    <span class="pill" id="p-robot"><span class="dot"></span> robot</span>
+    <span class="pill" id="p-nav"><span class="dot"></span> Nav2</span>
+  </div>
+</div>
+
+<div class="stage">
+  <section class="panel">
+    <h2><b>1</b> Store kiosk</h2>
+    <div class="kiosk" id="kiosk"></div>
+    <div class="dockline"><span class="pill on" id="dock"><span class="dot"></span> Robot docked beside the kiosk</span></div>
+  </section>
+
+  <section class="panel">
+    <h2><b>2</b> Customer's phone</h2>
+    <div class="phonewrap"><div class="phone" id="phone"><div class="idle">The customer scans the QR code on the kiosk and this page opens on their phone.</div></div></div>
+  </section>
+
+  <section class="panel">
+    <h2><b>3</b> The store, live</h2>
+    <div class="storehead">
+      <span class="what" id="what">Robot waiting at its dock</span>
+      <span class="pill" id="p-state">idle</span>
+      <span class="pill" id="p-dist">–</span>
+      <span class="pill" id="p-light"><span class="dot"></span> shelf light off</span>
+    </div>
+    <div class="mapbox"><svg id="map"></svg></div>
+    <div class="flow" id="flow"></div>
+    <div class="log" id="log"></div>
+  </section>
+</div>
+
+<script src="map.js"></script>
+<script>
+// The stage screen for the demo: the kiosk (1) starts a visit through n8n, the phone page (2)
+// is the real phone page in a frame, and the map (3) shows what the robot service reports.
+const $ = (id) => document.getElementById(id);
+let session = null, storeMap = null, lastScreen = null, lastState = null, lastLight = false;
+
+// ------------------------------------------------------------------ problem reports (logs/robot_service.jsonl)
+// Best-effort: never throws, never changes the page. The same report is sent at most once every 15 s.
+const reported = {};
+function report(event, details, level, always) {
+  try {
+    const key = event + JSON.stringify(details || {});
+    if (!always && reported[key] && Date.now() - reported[key] < 15000) return;
+    reported[key] = Date.now();
+    fetch('/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ source: 'stage', level: level || 'info', session_id: session, event, details: details || {} }) }).catch(() => {});
+  } catch (e) { /* reporting must never break the page */ }
+}
+window.addEventListener('error', (e) => report('js_error', { message: String(e.message), file: e.filename, line: e.lineno, col: e.colno,
+  stack: e.error && e.error.stack ? String(e.error.stack).slice(0, 1500) : undefined }, 'error'));
+window.addEventListener('unhandledrejection', (e) => report('js_error', { message: 'unhandled promise rejection: ' + String(e.reason && e.reason.message || e.reason),
+  stack: e.reason && e.reason.stack ? String(e.reason.stack).slice(0, 1500) : undefined }, 'error'));
+
+const FLOW = [['start', 'Kiosk'], ['input', 'Describe'], ['gate', 'Relevancy AI'], ['question', 'Follow-up'], ['items', 'Item list'],
+  ['guiding', 'Robot guides'], ['light', 'Light on'], ['arrived', 'Arrived'], ['anything_else', 'Anything else?'], ['finished', 'Repair steps'], ['home', 'Robot home']];
+$('flow').innerHTML = FLOW.map(([k, t]) => `<div id="f-${k}">${t}</div>`).join('');
+function flow(now) {
+  const at = FLOW.findIndex(([k]) => k === now);
+  FLOW.forEach(([k], n) => { $('f-' + k).className = n < at ? 'done' : n === at ? 'now' : ''; });
+}
+function log(html) {
+  const time = new Date().toLocaleTimeString([], { hour12: false });
+  $('log').insertAdjacentHTML('afterbegin', `<div>${time} &nbsp;${html}</div>`);
+}
+
+// ------------------------------------------------------------------ kiosk
+function kioskIdle() {
+  $('kiosk').innerHTML = `<h3>Not sure what you need for your repair?</h3>
+    <p>Tell us the problem. We'll find the right items and a robot will walk you to each one.</p>
+    <button class="help" onclick="pressHelp()">I'm here,<br>I need help</button>`;
+}
+async function pressHelp() {
+  $('kiosk').innerHTML = '<span class="spinner"></span><p>Starting your visit…</p>';
+  try {
+    const start = await (await fetch('/webhook/help/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+    if (!start.session_id) throw new Error(start.message || 'no session');
+    showVisit(start.session_id, start.link, start.qr_image_url);
+    log(`<b>POST /help/start</b> → visit <b>${session}</b>, QR code shown`);
+    flow('start');
+  } catch (e) {
+    report('fetch_failed', { method: 'POST', path: 'help/start', error: String(e.message || e) }, 'error');
+    $('kiosk').innerHTML = `<h3>Can't reach the workflow</h3><p>Is n8n running and the workflow active?<br>${e.message}</p><button class="again" onclick="kioskIdle()">Back</button>`;
+  }
+}
+
+// ------------------------------------------------------------------ live view
+const pill = (id, cls, text) => { $(id).className = 'pill ' + cls; if (text != null) $(id).innerHTML = text; };
+
+async function tick() {
+  // robot
+  try {
+    const r = await (await fetch('/tour/status')).json();
+    storeMap?.update(r);
+    const item = r.current_item, light = !!item && (r.lights_on || []).includes(item.tag_code);
+    pill('p-robot', 'ok');
+    pill('p-state', r.state === 'idle' || r.state === 'done' ? '' : 'orange', r.state.replace(/_/g, ' '));
+    pill('p-dist', '', r.distance_m != null && r.state === 'navigating' ? r.distance_m.toFixed(1) + ' m to go' : '–');
+    pill('p-light', light ? 'on' : '', `<span class="dot"></span> shelf light ${light ? 'ON · ' + item.tag_code : 'off'}`);
+    const docked = r.state === 'done' || (r.state === 'idle' && !item && r.pose && Math.hypot(r.pose.x - 9.45, r.pose.y - 2.2) < 0.6);
+    pill('dock', docked ? 'on' : 'orange', `<span class="dot"></span> ${docked ? 'Robot docked beside the kiosk' : 'Robot out guiding a customer'}`);
+    $('what').textContent = { navigating: item ? `Guiding to: ${item.name} · aisle ${item.aisle}, bay ${item.shelf}` : 'Driving',
+      waiting_for_pick: item ? `At the shelf: ${item.name}` : 'Waiting', returning_home: 'Returning to the dock', done: 'Back on the dock',
+      idle: item ? 'Waiting with the customer' : 'Robot waiting at its dock' }[r.state] || r.state;
+    if (r.state !== lastState) {
+      if (r.state === 'navigating' && item) log(`<b>POST /tour/start</b> → robot drives to <b>aisle ${item.aisle}, bay ${item.shelf}</b> (item ${r.index}/${r.total})`);
+      if (r.state === 'waiting_for_pick') log(`robot → n8n <b>/robot/event arrived</b> → phone may show "I am done"`);
+      if (r.state === 'returning_home') log(`<b>POST /tour/done</b> → robot returns to its dock`);
+      if (r.state === 'done') { log(`robot → n8n <b>/robot/event home</b> → <i>robot docked</i>`); if (['finished', 'timed_out'].includes(lastScreen)) { flow('home'); setTimeout(() => { if (['finished', 'timed_out'].includes(lastScreen)) kioskIdle(); }, 5000); } }
+      lastState = r.state;
+    }
+    if (light && !lastLight) { log(`robot → n8n <b>/robot/event near</b> (≤ 5 m) → n8n → <b>POST /tag/on</b> → <i>light ${item.tag_code} ON</i>`); if (lastScreen === 'guiding') flow('light'); }
+    if (!light && lastLight) log(`<b>POST /tag/off</b> → light off`);
+    lastLight = light;
+  } catch (e) { pill('p-robot', 'bad'); report('fetch_failed', { method: 'GET', path: '/tour/status', error: String(e) }, 'warn'); }
+
+  // phone screen (what n8n says the phone shows)
+  if (session) {
+    try {
+      const reply = await fetch('/webhook/help/status?session_id=' + session);
+      const s = await reply.json();
+      pill('p-n8n', s.error ? 'bad' : 'ok');
+      if (!reply.ok || s.error) report('webhook_error', { method: 'GET', path: 'help/status', http_status: reply.status, error: s.error, message: s.message },
+        reply.status >= 500 ? 'error' : 'warn');
+      if (s.screen && s.screen !== lastScreen) {
+        const said = { input: 'waiting for the customer to describe the need', sorry: '<b>AI 1</b> (relevancy): not related → sorry message',
+          question: '<b>AI 1</b> relevant ✓ → <b>AI 2</b> asks a follow-up question', items: '<b>AI 2</b> read the catalogue → item list sent to the phone',
+          guiding: lastScreen === 'arrived' ? 'item collected → light off → robot sent to the next item' : 'choice received → <b>AI 3</b> wrote repair steps → robot sent to the item', arrived: 'robot arrived → "I am done" unlocked',
+          anything_else: 'all items collected → "anything else?"', finished: 'visit finished → repair steps + videos sent, robot sent home',
+          timed_out: '10 minutes without input → visit closed, robot sent home' }[s.screen];
+        log(`phone screen: <b>${s.screen}</b> · ${said || ''}`);
+        report('stage_screen', { screen: s.screen, from: lastScreen, status: s.status, sku: s.data && s.data.item ? s.data.item.sku : undefined }, 'info', true);
+        flow(s.screen === 'sorry' ? 'gate' : s.screen === 'timed_out' ? 'finished' : s.screen);
+        lastScreen = s.screen;
+      }
+    } catch (e) { pill('p-n8n', 'bad'); report('fetch_failed', { method: 'GET', path: 'help/status', error: String(e) }, 'warn'); }
+  }
+  setTimeout(tick, 400);
+}
+
+// Shows the QR code and the phone for a visit (a new one, or ?s=<id> to rejoin one after a reload)
+function showVisit(id, link, qr) {
+  session = id;
+  history.replaceState(null, '', '?s=' + id);
+  $('kiosk').innerHTML = `<h3>Scan to start</h3><div class="qr"><img src="${qr}" alt="QR code" onerror="this.replaceWith('QR service not reachable: use the link')"></div>
+    <a href="${link}" target="_blank">${link}</a>
+    <p>Your robot guide is waiting beside this kiosk.</p><button class="again" onclick="pressHelp()">Start a new visit</button>`;
+  $('phone').innerHTML = `<iframe src="phone.html?s=${id}" allow="microphone; camera"></iframe>`;
+  lastScreen = null;
+}
+
+(async () => {
+  kioskIdle();
+  const rejoin = new URLSearchParams(location.search).get('s');
+  if (rejoin) {
+    const link = location.origin + '/demo/phone.html?s=' + rejoin;
+    showVisit(rejoin, link, 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=' + encodeURIComponent(link));
+  }
+  try {
+    const layout = await (await fetch('/store/layout')).json();
+    storeMap = new StoreMap($('map'), layout);
+    const health = await (await fetch('/health')).json();
+    pill('p-nav', health.nav2_ready ? 'ok' : 'bad', `<span class="dot"></span> ${health.mode === 'mock' ? 'mock robot' : 'Nav2'}`);
+  } catch (e) { pill('p-robot', 'bad'); }
+  try { const r = await fetch('/webhook/help/status?session_id=none'); pill('p-n8n', r.status === 404 ? 'ok' : 'bad'); } catch (e) { pill('p-n8n', 'bad'); }
+  tick();
+})();
+</script>
+</body>
+</html>

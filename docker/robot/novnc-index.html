@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RViz · Aisle Guide robot</title>
+<link rel="icon" href="data:,">
+<!--
+  RViz in the browser, clean for recording: connects by itself, scales the 1920x1080 screen to the
+  window (16:9, letterboxed in the same dark colour as RViz's background), no controls, no password,
+  reconnects after a restart. ?view_only=1 ignores mouse and keyboard (the demo stage's studio view
+  uses that). The full noVNC page with its controls is still at vnc.html.
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a1317; }
+  #screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  /* noVNC paints its own grey behind the picture: use RViz's background colour instead */
+  #screen > div { background: #0a1317 !important; }
+  #status {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    font: 500 1.125rem/1.4 system-ui, sans-serif; color: #ffffffb3; pointer-events: none;
+    transition: opacity .3s;
+  }
+  body.is-connected #status { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="screen"></div>
+<div id="status">Connecting to RViz…</div>
+<script type="module">
+  import RFB from './core/rfb.js';
+
+  const params = new URLSearchParams(location.search);
+  const viewOnly = params.get('view_only') === '1';
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/websockify';
+  const statusEl = document.getElementById('status');
+  let retry = 0;
+
+  function connect() {
+    let rfb;
+    try {
+      rfb = new RFB(document.getElementById('screen'), url, { shared: true });
+    } catch (e) {
+      statusEl.textContent = 'RViz is starting…';
+      setTimeout(connect, 2000);
+      return;
+    }
+    rfb.scaleViewport = true;
+    rfb.resizeSession = false;
+    rfb.viewOnly = viewOnly;
+    rfb.addEventListener('connect', () => {
+      retry = 0;
+      document.body.classList.add('is-connected');
+    });
+    rfb.addEventListener('disconnect', () => {
+      document.body.classList.remove('is-connected');
+      statusEl.textContent = 'RViz is starting…';
+      document.getElementById('screen').replaceChildren();
+      setTimeout(connect, Math.min(5000, 1000 + 500 * retry++));
+    });
+  }
+  connect();
+</script>
+</body>
+</html>

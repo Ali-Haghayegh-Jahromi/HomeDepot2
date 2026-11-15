@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aisle Guide</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { background: var(--page); }
+  .app { max-width: 480px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; background: var(--page); }
+  header { background: var(--orange); color: #fff; padding: 14px 18px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 5; }
+  header .logo { width: 30px; height: 30px; border-radius: 8px; background: #fff; color: var(--orange); display: grid; place-items: center; font-weight: 900; }
+  header h1 { font-size: 17px; margin: 0; flex: 1; letter-spacing: .2px; }
+  header small { opacity: .85; font-size: 11px; }
+  main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  h2 { font-size: 22px; margin: 6px 0 0; line-height: 1.2; }
+  p.lead { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.45; }
+  .card { background: var(--paper); border-radius: var(--radius); padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+
+  /* conversation */
+  .bubble { max-width: 88%; padding: 10px 14px; border-radius: 18px; font-size: 15px; line-height: 1.4; white-space: pre-wrap; }
+  .bubble.me { align-self: flex-end; background: var(--ink); color: #fff; border-bottom-right-radius: 6px; }
+  .bubble.bot { align-self: flex-start; background: var(--paper); border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .bubble.sorry { background: var(--red-soft); color: var(--red); }
+  .bubble img { display: block; max-width: 180px; border-radius: 10px; margin-top: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: #fff; border: 1.5px solid var(--orange); color: var(--orange-dark); padding: 9px 14px; border-radius: 999px; font-weight: 600; font-size: 14px; }
+  .thinking { align-self: flex-start; color: var(--muted); font-size: 14px; display: flex; gap: 8px; align-items: center; }
+
+  /* composer */
+  #foot { position: sticky; bottom: 0; z-index: 4; }
+  .composer { background: var(--page); padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+  .composer textarea { width: 100%; border: 1.5px solid var(--line); border-radius: 14px; padding: 12px; font: inherit; font-size: 16px; resize: none; min-height: 52px; background: #fff; }
+  .composer textarea:focus { outline: none; border-color: var(--orange); }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .tool { background: #fff; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; font-weight: 600; color: var(--ink); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .tool.active { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+  .tool.has { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+  .send { margin-left: auto; background: var(--orange); color: #fff; border-radius: 12px; padding: 11px 20px; font-weight: 700; font-size: 15px; }
+  .budget { width: 84px; min-width: 0; flex: 1 1 60px; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px; font: inherit; font-size: 14px; }
+
+  /* items */
+  .item { display: flex; gap: 12px; align-items: flex-start; border: 2px solid transparent; transition: border-color .15s; cursor: pointer; }
+  .item.picked { border-color: var(--orange); }
+  .item .order { flex: 0 0 34px; height: 34px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 800; color: #fff; }
+  .item.picked .order { background: var(--orange); border-color: var(--orange); }
+  .item h3 { margin: 0 0 4px; font-size: 15px; line-height: 1.3; }
+  .item .meta { font-size: 12.5px; color: var(--muted); }
+  .item .why { font-size: 13.5px; margin: 6px 0; line-height: 1.4; }
+  .item .price { font-size: 19px; font-weight: 800; white-space: nowrap; }
+  .item a { color: var(--orange-dark); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+  .tier { text-transform: uppercase; font-size: 10px; letter-spacing: .6px; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: #eeeef0; color: var(--muted); }
+  .tier.best { background: #fff0e6; color: var(--orange-dark); }
+  .bar { background: var(--paper); border-top: 1px solid var(--line); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; }
+  .big { flex: 1; background: var(--orange); color: #fff; border-radius: 14px; padding: 15px; font-size: 17px; font-weight: 800; }
+  .big.green { background: var(--green); }
+  .ghost { background: #fff; border: 1.5px solid var(--line); border-radius: 14px; padding: 15px 18px; font-weight: 700; font-size: 15px; color: var(--ink); }
+
+  /* guiding */
+  .hero { background: var(--ink); color: #fff; border-radius: var(--radius); padding: 18px; }
+  .hero .where { font-size: 30px; font-weight: 900; margin: 6px 0 2px; }
+  .hero .step { font-size: 13px; opacity: .7; text-transform: uppercase; letter-spacing: .8px; }
+  .hero.arrived { background: var(--green); }
+  .map { width: 100%; border-radius: 12px; display: block; background: #fbfaf7; }
+  .steps { margin: 6px 0 0; padding-left: 22px; line-height: 1.5; font-size: 15px; }
+  .steps li { margin-bottom: 6px; }
+  .video { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 600; }
+  .video span { flex: 0 0 34px; height: 24px; border-radius: 6px; background: #e62117; color: #fff; display: grid; place-items: center; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><div class="logo">A</div><h1>Aisle Guide <br><small>your in-store repair helper</small></h1><span class="pill" id="visit"></span></header>
+  <main id="main"></main>
+  <div id="foot"></div>
+</div>
+<script src="map.js"></script>
+<script>
+// The phone page of the concept. It only talks to n8n's webhooks (API_CONTRACT.md, part A):
+// it sends what the customer does, and draws whatever "screen" n8n answers with.
+const session = new URLSearchParams(location.search).get('s');
+
+// ------------------------------------------------------------------ problem reports (logs/robot_service.jsonl)
+// Best-effort: never throws, never changes the page. The same report is sent at most once every 15 s.
+const reported = {};
+function report(event, details, level, always) {
+  try {
+    const key = event + JSON.stringify(details || {});
+    if (!always && reported[key] && Date.now() - reported[key] < 15000) return;
+    reported[key] = Date.now();
+    fetch('/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ source: 'phone', level: level || 'info', session_id: session, event, details: details || {} }) }).catch(() => {});
+  } catch (e) { /* reporting must never break the page */ }
+}
+window.addEventListener('error', (e) => report('js_error', { message: String(e.message), file: e.filename, line: e.lineno, col: e.colno,
+  stack: e.error && e.error.stack ? String(e.error.stack).slice(0, 1500) : undefined }, 'error'));
+window.addEventListener('unhandledrejection', (e) => report('js_error', { message: 'unhandled promise rejection: ' + String(e.reason && e.reason.message || e.reason),
+  stack: e.reason && e.reason.stack ? String(e.reason.stack).slice(0, 1500) : undefined }, 'error'));
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const money = (n) => '$' + Number(n).toFixed(2);
+
+let current = null;          // the last screen reply drawn
+let talk = [];               // what was said so far, for the chat view
+let picked = [];             // chosen SKUs, in order
+let photo = null, voice = null, recorder = null;
+let busy = false, storeMap = null, layout = null;
+
+async function api(method, path, body) {
+  const where = { method, path: path.split('?')[0] };
+  let reply, data;
+  try {
+    reply = await fetch('/webhook/' + path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  } catch (e) { report('fetch_failed', { ...where, error: String(e) }, 'error'); throw e; }
+  try { data = await reply.json(); }
+  catch (e) { report('fetch_failed', { ...where, http_status: reply.status, error: 'the reply is not JSON' }, 'error'); throw e; }
+  if (!reply.ok || (data && data.error))
+    report('webhook_error', { ...where, http_status: reply.status, error: data && data.error, message: data && data.message,
+      screen: data && data.screen }, reply.status >= 500 ? 'error' : 'warn');
+  return data;
+}
+
+// ------------------------------------------------------------------ sending
+async function send(text) {
+  if (busy) return;
+  const typed = (text ?? $('text')?.value ?? '').trim();
+  if (!typed && !photo && !voice) return;
+  const budget = $('budget')?.value;
+  talk.push({ who: 'me', text: typed || (photo ? 'Photo' : 'Voice message'), image: photo?.preview, voice: !!voice });
+  const body = { session_id: session, ...(typed && { text: typed }),
+    ...(photo && { image_base64: photo.data, image_mime: photo.mime }),
+    ...(voice && { audio_base64: voice.data, audio_mime: voice.mime }),
+    ...(budget && { budget: Number(budget) }) };
+  photo = voice = null;
+  await act('help/request', body, 'Checking your request…');
+}
+
+async function act(path, body, label) {
+  busy = label || true;
+  draw(current);
+  try { apply(await api('POST', path, body), true); }
+  catch (e) { talk.push({ who: 'bot', text: 'Could not reach the service. Please try again.', sorry: true }); }
+  busy = false;
+  draw(current);
+}
+
+function apply(reply, mine) {
+  if (reply.error) {
+    if (reply.screen) return;                                   // out-of-step tap: the next status poll corrects the page
+    talk.push({ who: 'bot', text: reply.message || 'Something went wrong.', sorry: true });
+    return;
+  }
+  const changed = !current || current.screen !== reply.screen;
+  if (mine || changed) {
+    if (reply.screen === 'question') talk.push({ who: 'bot', text: reply.message });
+    if (reply.screen === 'sorry') talk.push({ who: 'bot', text: reply.message, sorry: true });
+    if (reply.screen === 'input' && current && current.screen === 'anything_else') talk = [{ who: 'bot', text: reply.message }];
+    if (reply.screen === 'items') picked = [];
+  }
+  current = reply;
+}
+
+// ------------------------------------------------------------------ drawing
+let drawnKey = null;
+function draw(r) {
+  if (!r) return;
+  try {   // problem reports: each new screen the page draws (not every redraw)
+    const d = r.data || {};
+    const key = [r.screen, d.item && d.item.sku, d.light_on, (d.items || []).length, d.question].join('|');
+    if (key !== drawnKey) {
+      drawnKey = key;
+      report('screen_drawn', { screen: r.screen, sku: d.item ? d.item.sku : undefined, index: d.index, total: d.total,
+        light_on: d.light_on, items: d.items ? d.items.map((i) => i.sku) : undefined,
+        options: d.options ? d.options.length : undefined, local: !!r.local }, 'info', true);
+    }
+  } catch (e) { /* never break drawing */ }
+  $('visit').textContent = 'visit ' + session;
+  const main = $('main'), foot = $('foot');
+  const d = r.data || {};
+  const screens = {
+    input: chat, question: chat, sorry: chat,
+    items() {
+      main.innerHTML = `<h2>Here's what you need</h2><p class="lead">${esc(r.message)}</p>` + d.items.map((i) => {
+        const n = picked.indexOf(i.sku);
+        return `<div class="card item ${n >= 0 ? 'picked' : ''}" data-sku="${i.sku}">
+          <div class="order">${n >= 0 ? n + 1 : ''}</div>
+          <div style="flex:1">
+            <h3>${esc(i.item_name)}</h3>
+            <div class="meta"><span class="tier ${i.quality_tier}">${i.quality_tier}</span> &nbsp;${esc(i.department)} · Aisle ${i.aisle}, Bay ${i.shelf} · SKU ${i.sku}</div>
+            <div class="why">${esc(i.reason || i.description)}</div>
+            <div class="meta">${esc(i.specs)}</div>
+            <a href="${esc(i.item_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on homedepot.com ›</a>
+          </div>
+          <div class="price">${money(i.price)}</div></div>`;
+      }).join('') + `<button class="chip" style="align-self:flex-start" onclick="askMore()">Ask for something different</button>`;
+      main.querySelectorAll('.item').forEach((card) => card.onclick = () => {
+        const sku = card.dataset.sku;
+        picked = picked.includes(sku) ? picked.filter((s) => s !== sku) : [...picked, sku];
+        draw(current);
+      });
+      const total = d.items.filter((i) => picked.includes(i.sku)).reduce((sum, i) => sum + i.price, 0);
+      foot.innerHTML = `<div class="bar">
+        <button class="big" ${busy ? 'disabled' : ''} onclick="act('help/confirm', {session_id: session, skus: picked}, 'Calling the robot…')">
+          ${busy ? '<span class="spinner"></span> ' + esc(busy) : picked.length ? `Guide me to ${picked.length} item${picked.length > 1 ? 's' : ''} · ${money(total)}` : 'I don\'t need any of these'}</button></div>`;
+    },
+    guiding: guide, arrived: guide,
+    anything_else() {
+      main.innerHTML = `<div style="flex:1"></div><h2 style="text-align:center">${esc(r.message)}</h2>
+        <p class="lead" style="text-align:center">The robot is waiting right here with you.</p><div style="flex:1"></div>`;
+      foot.innerHTML = `<div class="bar">
+        <button class="ghost" ${busy ? 'disabled' : ''} onclick="act('help/anything-else', {session_id: session, answer: 'no'})">No, I'm all set</button>
+        <button class="big" ${busy ? 'disabled' : ''} onclick="act('help/anything-else', {session_id: session, answer: 'yes'})">Yes, one more thing</button></div>`;
+    },
+    finished: done, timed_out: done,
+  };
+  (screens[r.screen] || chat)();
+
+  function chat() {
+    const options = r.screen === 'question' || r.screen === 'sorry' ? (d.options || []) : [];
+    main.innerHTML = (talk.length ? '' : `<h2>Hi! What are you fixing today?</h2><p class="lead">${esc(r.message)}</p>
+        <div class="chips">${['A board on my deck is cracked', 'My toilet keeps running', 'There is a hole in my wall'].map((t) => `<button class="chip" onclick="send(this.textContent)">${t}</button>`).join('')}</div>`) +
+      talk.map((m) => `<div class="bubble ${m.who} ${m.sorry ? 'sorry' : ''}">${esc(m.text)}${m.voice ? ' 🎤' : ''}${m.image ? `<img src="${m.image}">` : ''}</div>`).join('') +
+      (r.screen === 'sorry' && d.question ? `<div class="bubble bot">${esc(d.question)}</div>` : '') +
+      (busy ? `<div class="thinking"><span class="spinner dark"></span> ${esc(busy)}</div>`
+            : options.length ? `<div class="chips">${options.map((o) => `<button class="chip" onclick="send(this.textContent)">${esc(o)}</button>`).join('')}</div>` : '');
+    if (!$('text')) {
+      foot.innerHTML = `<div class="composer">
+        <textarea id="text" rows="2" placeholder="Describe what you need…"></textarea>
+        <div class="row">
+          <button class="tool" id="photoBtn" onclick="$('file').click()">📷 Photo</button>
+          <button class="tool" id="voiceBtn" onclick="record()">🎤 Voice</button>
+          <input class="budget" id="budget" type="number" min="1" placeholder="Budget $">
+          <input type="file" id="file" accept="image/*" hidden onchange="addPhoto(this.files[0])">
+          <button class="send" onclick="send()">Send</button>
+        </div></div>`;
+      $('text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+    }
+    if (busy) { $('text').value = ''; $('budget').value = ''; }
+    $('photoBtn').className = 'tool' + (photo ? ' has' : '');
+    $('photoBtn').textContent = photo ? '📷 Photo added' : '📷 Photo';
+    $('voiceBtn').className = 'tool' + (recorder ? ' active' : voice ? ' has' : '');
+    $('voiceBtn').textContent = recorder ? '■ Stop' : voice ? '🎤 Recorded' : '🎤 Voice';
+    window.scrollTo(0, document.body.scrollHeight);
+  }
+
+  function guide() {
+    const i = d.item, here = r.screen === 'arrived';
+    main.innerHTML = `<div class="hero ${here ? 'arrived' : ''}">
+        <div class="step">Item ${d.index} of ${d.total} · ${here ? 'you have arrived' : 'follow the robot'}</div>
+        <div class="where">Aisle ${i.aisle} · Bay ${i.shelf}</div>
+        <div>${esc(i.department)}</div></div>
+      <div class="card"><div style="display:flex;gap:12px"><div style="flex:1"><h3 style="margin:0 0 4px;font-size:16px">${esc(i.item_name)}</h3>
+        <div class="meta" style="font-size:13px;color:var(--muted)">SKU ${i.sku} · ${esc(i.specs)}</div></div>
+        <div class="price" style="font-size:20px;font-weight:800">${money(i.price)}</div></div>
+        <div style="margin-top:10px"><span class="pill ${d.light_on ? 'on' : ''}"><span class="dot"></span> Shelf light ${d.light_on ? 'ON: look for the green light' : 'turns on when you are close'}</span></div></div>
+      <div class="card" style="padding:8px"><svg class="map" id="map"></svg></div>`;
+    if (layout) { storeMap = new StoreMap($('map'), layout, { compact: true }); if (lastRobot) storeMap.update(lastRobot); }
+    foot.innerHTML = here ? `<div class="bar"><button class="big green" ${busy ? 'disabled' : ''} onclick="act('help/next', {session_id: session})">✓ I am done</button></div>` : '';
+  }
+
+  function done() {
+    const requests = d.requests || [];
+    main.innerHTML = `<h2>${r.screen === 'finished' ? 'You\'re all set!' : 'Visit ended'}</h2><p class="lead">${esc(r.message)}</p>` +
+      requests.map((q) => `<div class="card"><h3 style="margin:0 0 4px">${esc(q.request)}</h3>
+        <div class="meta" style="font-size:13px;color:var(--muted)">${q.items.map(esc).join(' · ')}</div>
+        <ol class="steps">${q.repair_steps.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>
+        ${q.videos.map((v) => `<a class="video" href="${esc(v.url)}" target="_blank" rel="noopener"><span>▶</span>${esc(v.title)}</a>`).join('')}</div>`).join('') +
+      (r.screen === 'finished' ? `<p class="lead" style="text-align:center;margin-top:8px">Head to checkout whenever you're ready. The robot is on its way back to the kiosk.</p>` : '');
+    foot.innerHTML = '';
+  }
+}
+
+function askMore() { current = { ...current, screen: 'question', data: {}, local: true }; talk.push({ who: 'bot', text: 'No problem. What should I change?' }); draw(current); $('text').focus(); }
+
+// ------------------------------------------------------------------ photo and voice
+const toBase64 = (blob) => new Promise((ok) => { const f = new FileReader(); f.onload = () => ok(f.result); f.readAsDataURL(blob); });
+async function addPhoto(file) {
+  if (!file) return;
+  const url = await toBase64(file);
+  photo = { data: url.split(',')[1], mime: file.type || 'image/jpeg', preview: url };
+  draw(current);
+}
+async function record() {
+  if (recorder) { recorder.stop(); return; }
+  if (voice) { voice = null; draw(current); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const mime = (recorder.mimeType || 'audio/webm').split(';')[0];
+      const url = await toBase64(new Blob(chunks, { type: mime }));
+      voice = { data: url.split(',')[1], mime };
+      recorder = null;
+      draw(current);
+    };
+    recorder.start();
+  } catch (e) { alert('The microphone is not available here (it needs permission, and https or localhost).'); recorder = null; }
+  draw(current);
+}
+
+// ------------------------------------------------------------------ keeping up with the robot
+let lastRobot = null;
+async function poll() {
+  if (!busy) {
+    try {
+      const reply = await api('GET', 'help/status?session_id=' + session);
+      const key = (r) => r && [r.screen, r.data?.item?.sku, r.data?.light_on, (r.data?.items || []).length].join('|');
+      if (!reply.error && !busy && key(reply) !== key(current)) { apply(reply, false); draw(current); }
+    } catch (e) { /* n8n not reachable: try again next time */ }
+  }
+  if (current && ['guiding', 'arrived'].includes(current.screen)) {
+    try { lastRobot = await (await fetch('/tour/status')).json(); storeMap?.update(lastRobot); }
+    catch (e) { report('fetch_failed', { method: 'GET', path: '/tour/status', error: String(e) }, 'warn'); /* robot service not reachable */ }
+  }
+  setTimeout(poll, 1200);
+}
+
+(async () => {
+  if (!session) { $('main').innerHTML = '<h2>Scan the QR code on the kiosk to start.</h2>'; return; }
+  try { layout = await (await fetch('/store/layout')).json(); } catch (e) { report('fetch_failed', { method: 'GET', path: '/store/layout', error: String(e) }, 'warn'); /* no map */ }
+  const first = await api('GET', 'help/status?session_id=' + session);
+  if (first.error) { $('main').innerHTML = `<h2>${esc(first.message)}</h2>`; return; }
+  current = first;
+  if (['question', 'sorry'].includes(first.screen)) talk.push({ who: 'bot', text: first.message, sorry: first.screen === 'sorry' });
+  draw(current);
+  poll();
+})();
+</script>
+</body>
+</html>

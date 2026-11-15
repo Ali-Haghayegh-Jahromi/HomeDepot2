@@ -1,0 +1,51 @@
+/* Shared look of the demo screens. Orange = the store's colour; green = the robot and its light. */
+:root {
+  --orange: #f96302;
+  --orange-dark: #d95300;
+  --ink: #1d1d1f;
+  --muted: #6b6f76;
+  --line: #e4e5e8;
+  --paper: #ffffff;
+  --page: #f3f3f1;
+  --green: #12a150;
+  --green-soft: #e3f6ea;
+  --red-soft: #fdecea;
+  --red: #c0392b;
+  --radius: 16px;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--page); color: var(--ink); }
+button { font: inherit; cursor: pointer; border: 0; }
+button:disabled { opacity: .45; cursor: default; }
+
+/* ---- store map */
+.m-floor { fill: #fbfaf7; stroke: #2b2b2e; stroke-width: .35; }
+.m-rack { fill: var(--orange); opacity: .9; }
+.m-front { fill: #9a9da3; }
+.m-kiosk { fill: var(--ink); }
+.m-door { stroke: #fbfaf7; stroke-width: .8; }
+.m-small { font-size: .85px; fill: var(--muted); text-anchor: middle; }
+.m-aisle { font-size: 1.7px; font-weight: 800; fill: var(--ink); text-anchor: middle; }
+.m-dept { font-size: .62px; fill: var(--muted); text-anchor: middle; }
+.m-dock { fill: var(--green-soft); stroke: var(--green); stroke-width: .18; stroke-dasharray: .4 .3; }
+.m-dock-label { fill: var(--green); text-anchor: start; }
+.m-trail { fill: none; stroke: var(--green); stroke-width: .28; stroke-linecap: round; stroke-linejoin: round; opacity: .55; stroke-dasharray: .1 .55; }
+.m-near { fill: rgba(18, 161, 80, .06); stroke: var(--green); stroke-width: .08; stroke-dasharray: .5 .4; }
+.m-robot { transition: transform .22s linear; }
+.m-robot-body { fill: var(--green); stroke: #fff; stroke-width: .18; }
+.m-robot-nose { fill: var(--green); stroke: #fff; stroke-width: .12; }
+.m-light { fill: #b9bcc2; stroke: #fff; stroke-width: .12; }
+.m-light-glow { fill: none; }
+.m-target.on .m-light { fill: #19e36b; }
+.m-target.on .m-light-glow { fill: rgba(25, 227, 107, .35); animation: glow 1.1s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes glow { 0%, 100% { transform: scale(.7); opacity: .9; } 50% { transform: scale(1.5); opacity: .25; } }
+
+/* ---- small shared pieces */
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #eeeef0; color: var(--muted); }
+.pill.on { background: var(--green-soft); color: var(--green); }
+.pill.orange { background: #fff0e6; color: var(--orange-dark); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.spinner { width: 18px; height: 18px; border: 3px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; vertical-align: -3px; }
+.spinner.dark { border-color: #ddd; border-top-color: var(--orange); }
+@keyframes spin { to { transform: rotate(360deg); } }
