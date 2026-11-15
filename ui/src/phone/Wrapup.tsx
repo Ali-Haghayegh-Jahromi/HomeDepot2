@@ -11,7 +11,9 @@ import { List, ListItem } from '@astryxdesign/core/List'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { CheckIcon, ClockIcon, PlayIcon, PlusIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline'
-import type { Summary } from '../shared/types'
+import { StackItem } from '@astryxdesign/core/Stack'
+import { money } from '../shared/api'
+import type { Item, Summary } from '../shared/types'
 import type { PhoneSession } from './usePhoneSession'
 
 export function AnythingElse({ s }: { s: PhoneSession }) {
@@ -37,7 +39,10 @@ export function AnythingElse({ s }: { s: PhoneSession }) {
             {s.pickedItems.map((i) => (
               <HStack key={i.sku} as="li" gap={2} vAlign="center">
                 <Icon icon={CheckIcon} size="sm" color="success" />
-                <Text maxLines={1}>{i.item_name}</Text>
+                <StackItem size="fill">
+                  <Text maxLines={1}>{i.item_name}</Text>
+                </StackItem>
+                <Text hasTabularNumbers>{money(i.price)}</Text>
               </HStack>
             ))}
           </VStack>
@@ -82,7 +87,14 @@ export function AnythingElseFooter({ s }: { s: PhoneSession }) {
   )
 }
 
-function RequestSummary({ r, n, many }: { r: Summary; n: number; many: boolean }) {
+/** A YouTube search link is said as one ("Search YouTube: …"), a real video as a video. */
+const isSearch = (url: string) => /youtube\.com\/results/i.test(url)
+const capital = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+
+function RequestSummary({ r, n, many, known }: { r: Summary; n: number; many: boolean; known: Item[] }) {
+  const priced = r.items.map((name) => ({ name, item: known.find((i) => i.item_name === name) }))
+  const allPriced = priced.length > 0 && priced.every((p) => p.item)
+  const total = priced.reduce((sum, p) => sum + (p.item?.price ?? 0), 0)
   return (
     <Card padding={4}>
       <VStack gap={4} as="article" aria-label={r.request}>
@@ -94,13 +106,26 @@ function RequestSummary({ r, n, many }: { r: Summary; n: number; many: boolean }
           )}
           <Heading level={2}>{r.request}</Heading>
           {r.items.length > 0 && (
-            <VStack gap={1} as="ul" className="plain-list" aria-label="What you picked up">
-              {r.items.map((name) => (
-                <HStack key={name} as="li" gap={2} vAlign="start">
-                  <Icon icon={CheckIcon} size="sm" color="success" />
-                  <Text type="supporting">{name}</Text>
-                </HStack>
-              ))}
+            <VStack gap={2}>
+              <VStack gap={1} as="ul" className="plain-list" aria-label="What you picked up">
+                {priced.map(({ name, item }) => (
+                  <HStack key={name} as="li" gap={2} vAlign="start">
+                    <Icon icon={CheckIcon} size="sm" color="success" />
+                    <StackItem size="fill">
+                      <Text type="supporting">{name}</Text>
+                    </StackItem>
+                    {item && (
+                      <Text type="supporting" hasTabularNumbers>
+                        {money(item.price)}
+                      </Text>
+                    )}
+                  </HStack>
+                ))}
+              </VStack>
+              <Text type="label" hasTabularNumbers>
+                {r.items.length} item{r.items.length > 1 ? 's' : ''}
+                {allPriced ? ` · ${money(total)}` : ''} · pay at any register
+              </Text>
             </VStack>
           )}
         </VStack>
@@ -124,7 +149,9 @@ function RequestSummary({ r, n, many }: { r: Summary; n: number; many: boolean }
         {r.videos.length > 0 && (
           <VStack gap={2}>
             <Divider />
-            <Heading level={3}>How-to videos</Heading>
+            <Heading level={3}>
+              {r.videos.every((v) => isSearch(v.url)) ? 'Find a how-to video' : 'How-to videos'}
+            </Heading>
             <List edge="flush" density="spacious" aria-label="How-to videos">
               {r.videos.map((v) => (
                 <ListItem
@@ -132,8 +159,8 @@ function RequestSummary({ r, n, many }: { r: Summary; n: number; many: boolean }
                   href={v.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  label={v.title.charAt(0).toUpperCase() + v.title.slice(1)}
-                  description="YouTube · opens in a new tab"
+                  label={isSearch(v.url) ? `Search YouTube: ${v.title}` : capital(v.title)}
+                  description={isSearch(v.url) ? 'Opens YouTube search results' : 'YouTube · opens in a new tab'}
                   startContent={
                     <span className="video-play" aria-hidden>
                       <Icon icon={PlayIcon} size="sm" color="inherit" />
@@ -182,7 +209,7 @@ export function Finished({ s }: { s: PhoneSession }) {
       {requests.length ? (
         <VStack gap={4}>
           {requests.map((r, i) => (
-            <RequestSummary key={i} r={r} n={i + 1} many={requests.length > 1} />
+            <RequestSummary key={i} r={r} n={i + 1} many={requests.length > 1} known={s.items} />
           ))}
         </VStack>
       ) : (
@@ -208,6 +235,11 @@ export function Finished({ s }: { s: PhoneSession }) {
         >
           More DIY projects and guides
         </Link>
+        {s.session && (
+          <Text type="supporting" color="secondary" hasTabularNumbers>
+            Visit code {s.session.slice(0, 4).toUpperCase()} · show it to a store associate if you need help
+          </Text>
+        )}
       </VStack>
     </VStack>
   )

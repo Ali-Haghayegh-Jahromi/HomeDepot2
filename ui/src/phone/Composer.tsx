@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button } from '@astryxdesign/core/Button'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { Icon } from '@astryxdesign/core/Icon'
@@ -6,7 +6,6 @@ import { HStack } from '@astryxdesign/core/HStack'
 import { VStack } from '@astryxdesign/core/VStack'
 import { StackItem } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
-import { Thumbnail } from '@astryxdesign/core/Thumbnail'
 import { Token } from '@astryxdesign/core/Token'
 import { StatusDot } from '@astryxdesign/core/StatusDot'
 import { TextInput } from '@astryxdesign/core/TextInput'
@@ -18,11 +17,12 @@ import {
   PaperAirplaneIcon,
   PhotoIcon,
   StopIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { useElapsed } from '../shared/hooks'
 import { report } from '../shared/log'
 import type { Draft } from './usePhoneSession'
-import { clock, preparePhoto, startRecording, type Recording } from './media'
+import { clock, PHOTO_PICKER_EVENT, preparePhoto, startRecording, type Recording } from './media'
 import { useMirrorComposer, type ComposerView } from './mirror'
 
 interface Props {
@@ -35,7 +35,31 @@ interface Props {
 }
 
 const MAX_RECORDING_S = 60
+const MAX_ROWS = 5
 const EMPTY: Draft = { text: '', photo: null, voice: null, budget: null }
+
+/** Something attached to the message, with a 44 px "remove" button. */
+function Attachment({ children, label, onRemove }: { children: ReactNode; label: string; onRemove: () => void }) {
+  return (
+    <HStack gap={1} vAlign="center" className="attachment">
+      {children}
+      <IconButton label={label} icon={<Icon icon={XMarkIcon} />} variant="ghost" size="lg" onClick={onRemove} />
+    </HStack>
+  )
+}
+
+/** One row high, growing with the text up to five rows (TextArea has no auto-grow of its own). */
+function useAutoGrow(ref: RefObject<HTMLTextAreaElement | null>, value: string) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    const cs = getComputedStyle(el)
+    const line = parseFloat(cs.lineHeight) || 24
+    const pad = parseFloat(cs.paddingBlockStart) + parseFloat(cs.paddingBlockEnd)
+    el.style.height = `${Math.min(el.scrollHeight, line * MAX_ROWS + pad)}px`
+  }, [ref, value])
+}
 
 export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKey }: Props) {
   const [draft, setDraft] = useState<Draft>(EMPTY)
@@ -47,6 +71,18 @@ export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKe
   const recording = useRef<Recording | null>(null)
   const cameraInput = useRef<HTMLInputElement>(null)
   const libraryInput = useRef<HTMLInputElement>(null)
+  const textRef = useRef<HTMLTextAreaElement>(null)
+
+  // "Take a photo of the problem" on the welcome screen opens this composer's camera or library.
+  useEffect(() => {
+    const open = (e: Event) => {
+      const source = (e as CustomEvent<'camera' | 'library'>).detail
+      const input = source === 'camera' ? cameraInput.current : libraryInput.current
+      input?.click()
+    }
+    window.addEventListener(PHOTO_PICKER_EVENT, open)
+    return () => window.removeEventListener(PHOTO_PICKER_EVENT, open)
+  }, [])
 
   // What the composer shows: its own state, or (on the stage's mirror) the customer's phone's.
   const mirror = useMirrorComposer()
@@ -68,6 +104,7 @@ export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKe
   }, [reportView, own.text, own.photo, own.voiceSeconds, own.budget, budgetOpen, budgetText, problem, recordingSince])
   useEffect(() => () => reportView?.(null), [reportView])
   const elapsed = useElapsed(v.recordingSince)
+  useAutoGrow(textRef, v.text)
 
   useEffect(() => {
     if (budgetFocus > 0) setBudgetOpen(true)
@@ -187,39 +224,35 @@ export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKe
       {(v.photo || v.voiceSeconds || v.budget != null) && (
         <HStack gap={2} vAlign="center" wrap="wrap" aria-label="Attached to your message">
           {v.photo && (
-            <Thumbnail
-              src={v.photo}
-              alt="Your photo"
-              label="Remove photo"
-              showRemoveOn="always"
-              onRemove={() => setDraft((d) => ({ ...d, photo: null }))}
-            />
-          )}
-          {v.photo && !v.text.trim() && (
-            <StackItem size="fill">
-              <VStack gap={0}>
-                <Text type="label">Photo added</Text>
-                <Text type="supporting">Add a few words about it, or just send it.</Text>
-              </VStack>
-            </StackItem>
+            <Attachment label="Remove photo" onRemove={() => setDraft((d) => ({ ...d, photo: null }))}>
+              <img className="attachment-photo" src={v.photo} alt="Your photo" />
+              {!v.text.trim() && (
+                <VStack gap={0}>
+                  <Text type="label">Photo added</Text>
+                  <Text type="supporting">Add a few words, or just send it.</Text>
+                </VStack>
+              )}
+            </Attachment>
           )}
           {!!v.voiceSeconds && (
-            <Token
-              size="lg"
-              color="orange"
-              icon={<Icon icon={MicrophoneIcon} size="sm" />}
-              label={`Voice note · ${clock(v.voiceSeconds)}`}
-              onRemove={() => setDraft((d) => ({ ...d, voice: null }))}
-            />
+            <Attachment label="Remove voice note" onRemove={() => setDraft((d) => ({ ...d, voice: null }))}>
+              <Token
+                size="lg"
+                color="orange"
+                icon={<Icon icon={MicrophoneIcon} size="sm" />}
+                label={`Voice note · ${clock(v.voiceSeconds)}`}
+              />
+            </Attachment>
           )}
           {v.budget != null && (
-            <Token
-              size="lg"
-              color="green"
-              icon={<Icon icon={CurrencyDollarIcon} size="sm" />}
-              label={`Budget $${v.budget}`}
-              onRemove={() => setDraft((d) => ({ ...d, budget: null }))}
-            />
+            <Attachment label="Remove budget" onRemove={() => setDraft((d) => ({ ...d, budget: null }))}>
+              <Token
+                size="lg"
+                color="green"
+                icon={<Icon icon={CurrencyDollarIcon} size="sm" />}
+                label={`Budget $${v.budget}`}
+              />
+            </Attachment>
           )}
         </HStack>
       )}
@@ -292,8 +325,9 @@ export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKe
             isLabelHidden
             value={v.text}
             onChange={(text) => setDraft((d) => ({ ...d, text }))}
+            ref={textRef}
             placeholder={placeholder}
-            rows={2}
+            rows={1}
             size="lg"
             enterKeyHint="send"
             isDisabled={isBusy}
@@ -338,7 +372,7 @@ export function Composer({ isBusy, onSend, placeholder, budgetFocus = 0, focusKe
             <StackItem size="fill" />
             <Button
               label={sendLabel}
-              variant="primary"
+              variant={canSendShown || isBusy ? 'primary' : 'secondary'}
               size="lg"
               icon={<Icon icon={PaperAirplaneIcon} />}
               isDisabled={!canSendShown}

@@ -1,1 +1,0 @@
-import{P as e}from"./resolveMotion-06x1M4Iq.js";import{j as t}from"./focusOutline.stylex-C-_jhVrI.js";var n=t();function r({content:t,children:r}){return(0,n.jsx)(e,{content:t,placement:`above`,focusTrigger:`always`,children:r})}export{r as default};

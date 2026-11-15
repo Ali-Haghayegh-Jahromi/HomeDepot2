@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { ChatMessage, ChatMessageBubble, ChatMessageList } from '@astryxdesign/core/Chat'
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
@@ -13,16 +13,16 @@ import { VStack } from '@astryxdesign/core/VStack'
 import {
   ArrowPathIcon,
   CameraIcon,
-  ChatBubbleLeftEllipsisIcon,
   CurrencyDollarIcon,
   ExclamationCircleIcon,
   EyeIcon,
-  MapPinIcon,
   MicrophoneIcon,
-  ShoppingCartIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline'
+import { StackItem } from '@astryxdesign/core/Stack'
 import { usePrefersReducedMotion, useElapsed } from '../shared/hooks'
-import { clock } from './media'
+import { clock, openPhotoPicker } from './media'
+import { scrollArea } from './mirror'
 import type { Message, PhoneSession } from './usePhoneSession'
 
 const SUGGESTIONS = [
@@ -47,9 +47,9 @@ function thinkingStep(seconds: number, hasPhoto: boolean, hasVoice: boolean): st
   return 'Comparing prices and aisles. Almost there…'
 }
 
-/** The AI's reading of the customer's photo or voice note: "Here's what I see: …". */
-export function Understood({ m }: { m: Pick<Message, 'text' | 'media'> }) {
-  return (
+/** The AI's reading of the customer's photo or voice note: "Here's what I see: …", with the photo. */
+export function Understood({ m, photo }: { m: Pick<Message, 'text' | 'media'>; photo?: string }) {
+  const text = (
     <VStack gap={1} className="understood">
       <HStack gap={1} vAlign="center">
         <Icon icon={m.media === 'voice' ? MicrophoneIcon : EyeIcon} size="sm" color="accent" />
@@ -60,7 +60,18 @@ export function Understood({ m }: { m: Pick<Message, 'text' | 'media'> }) {
       <Text as="p">{m.text}</Text>
     </VStack>
   )
+  if (m.media !== 'photo' || !photo) return text
+  return (
+    <HStack gap={3} vAlign="start">
+      <img className="seen-photo" src={photo} alt="The photo you sent" />
+      <StackItem size="fill">{text}</StackItem>
+    </HStack>
+  )
 }
+
+/** The newest photo the customer sent before message `id` (for "Here's what I see"). */
+export const photoBefore = (talk: Message[], id: number) =>
+  [...talk].reverse().find((t) => t.id < id && t.who === 'me' && t.photo)?.photo
 
 function Thinking({ since, last }: { since: number; last: Message | undefined }) {
   const seconds = useElapsed(since)
@@ -83,13 +94,23 @@ function Thinking({ since, last }: { since: number; last: Message | undefined })
   )
 }
 
-function Bubble({ m, onRetry, isBusy }: { m: Message; onRetry: (id: number) => void; isBusy: boolean }) {
+function Bubble({
+  m,
+  onRetry,
+  isBusy,
+  photo,
+}: {
+  m: Message
+  onRetry: (id: number) => void
+  isBusy: boolean
+  photo?: string
+}) {
   if (m.who === 'bot') {
     return (
-      <ChatMessage sender="assistant">
+      <ChatMessage sender="assistant" data-anchor={'m-' + m.id}>
         <ChatMessageBubble>
           {m.kind === 'understood' ? (
-            <Understood m={m} />
+            <Understood m={m} photo={photo} />
           ) : m.tone === 'sorry' ? (
             <HStack gap={2} vAlign="start" className="bubble-sorry">
               <Icon icon={ExclamationCircleIcon} color="warning" size="sm" />
@@ -105,6 +126,7 @@ function Bubble({ m, onRetry, isBusy }: { m: Message; onRetry: (id: number) => v
   return (
     <ChatMessage
       sender="user"
+      data-anchor={'m-' + m.id}
       metadata={
         m.state === 'sending' ? (
           <Text type="supporting">Sending…</Text>
@@ -163,50 +185,36 @@ function Bubble({ m, onRetry, isBusy }: { m: Message; onRetry: (id: number) => v
   )
 }
 
-/** First screen of a request: what this is, how it works, and a few real examples to tap. */
+/** First screen of a request: the photo is the headline way in; examples sit above the message box. */
 function Welcome({ s }: { s: PhoneSession }) {
   const again = s.completed > 0
   return (
-    <VStack gap={5} className="welcome">
+    <VStack gap={5} className="welcome" data-anchor="welcome">
       <VStack gap={2}>
-        <Text type="label" color="accent">
-          {again ? 'Next request' : 'Welcome to the store'}
-        </Text>
-        <Heading level={1}>{again ? 'What else can we help with?' : 'What are you fixing today?'}</Heading>
+        <Heading level={1}>{again ? 'What else are you fixing?' : 'What are you fixing today?'}</Heading>
         <Text as="p" color="secondary">
-          {s.current?.message || 'Tell us what you need help with. Type it, add a photo, or record your voice.'}
+          Snap a photo of what's broken and tell me what happened. I'll find the parts in this store and walk you to
+          them.
         </Text>
       </VStack>
-      {!again && (
-        <ol className="how-it-works" aria-label="How it works">
-          <li>
-            <Icon icon={ChatBubbleLeftEllipsisIcon} color="accent" />
-            <Text>Describe the problem in your own words, with a photo if it helps.</Text>
-          </li>
-          <li>
-            <Icon icon={ShoppingCartIcon} color="accent" />
-            <Text>We pick the right items from this store, within your budget.</Text>
-          </li>
-          <li>
-            <Icon icon={MapPinIcon} color="accent" />
-            <Text>Our robot walks you to each shelf, and the shelf tag lights up.</Text>
-          </li>
-        </ol>
-      )}
-      <VStack gap={2}>
-        <Text type="supporting">Try one of these</Text>
-        <VStack gap={2} hAlign="start">
-          {SUGGESTIONS.map((t) => (
-            <Button
-              key={t}
-              label={t}
-              variant="secondary"
-              size="lg"
-              isDisabled={!!s.busy}
-              onClick={() => void s.sendRequest({ text: t, photo: null, voice: null, budget: null })}
-            />
-          ))}
-        </VStack>
+      <VStack gap={2} hAlign="center">
+        <Button
+          label="Take a photo of the problem"
+          variant="secondary"
+          size="lg"
+          width="100%"
+          icon={<Icon icon={CameraIcon} />}
+          isDisabled={!!s.busy}
+          onClick={() => openPhotoPicker('camera')}
+        />
+        <Button
+          label="or choose one from your photos"
+          variant="ghost"
+          size="lg"
+          icon={<Icon icon={PhotoIcon} />}
+          isDisabled={!!s.busy}
+          onClick={() => openPhotoPicker('library')}
+        />
       </VStack>
     </VStack>
   )
@@ -214,36 +222,99 @@ function Welcome({ s }: { s: PhoneSession }) {
 
 const BUDGET_PICKS = [25, 50, 100, 200]
 
+/**
+ * Tap-to-answer chips, in the footer just above the message box, so they show on the phone and on
+ * the stage's mirror whatever the scroll: the AI's suggested answers, budget amounts, or examples.
+ */
+export function QuickReplies({ s }: { s: PhoneSession }) {
+  const screen = s.current?.screen
+  const data = s.current?.data ?? {}
+  if (s.busy || s.composing) return null
+  const answer = (text: string) => void s.sendRequest({ text, photo: null, voice: null, budget: null })
+  if (screen === 'question') {
+    const options = data.options ?? []
+    const budgetPicks = asksAboutBudget(data.question) && s.budget == null && !options.some((o) => /\$|\d/.test(o))
+    if (!options.length && !budgetPicks) return null
+    return (
+      <HStack gap={2} wrap="wrap" as="section" aria-label="Tap an answer" className="quick-replies">
+        {options.map((o) => (
+          <Button key={o} label={o} variant="secondary" size="lg" onClick={() => answer(o)} />
+        ))}
+        {budgetPicks && (
+          <>
+            {BUDGET_PICKS.map((n) => (
+              <Button
+                key={n}
+                label={`$${n}`}
+                variant="secondary"
+                size="lg"
+                onClick={() =>
+                  void s.sendRequest({ text: `My budget is about $${n}`, photo: null, voice: null, budget: n })
+                }
+              />
+            ))}
+            <Button label="Other amount" variant="ghost" size="lg" onClick={s.openBudgetField} />
+          </>
+        )}
+      </HStack>
+    )
+  }
+  // examples: on the first screen, and after a "sorry" as a way back in
+  if ((screen === 'input' && s.talk.length === 0) || screen === 'sorry') {
+    return (
+      <section aria-label="Examples you can send" className="example-row" data-overflow-ok>
+        <HStack gap={2} className="example-track">
+          {SUGGESTIONS.map((t) => (
+            <Button key={t} label={t} variant="secondary" size="lg" onClick={() => answer(t)} />
+          ))}
+        </HStack>
+      </section>
+    )
+  }
+  return null
+}
+
+/** Scrolls the page's own scroll area (scrollIntoView would also scroll the stage around the phone frame). */
+function scrollAreaTo(el: HTMLElement | null, where: 'end' | 'start', smooth: boolean) {
+  const area = scrollArea()
+  if (!area) return
+  const behavior: ScrollBehavior = smooth ? 'smooth' : 'auto'
+  if (where === 'end' || !el) {
+    area.scrollTo({ top: area.scrollHeight, behavior })
+    return
+  }
+  const top = el.getBoundingClientRect().top - area.getBoundingClientRect().top + area.scrollTop
+  area.scrollTo({ top: Math.max(0, top - 8), behavior })
+}
+
 /** The conversation for the input, question and sorry screens (and "ask for something different"). */
 export function Conversation({ s }: { s: PhoneSession }) {
   const reduceMotion = usePrefersReducedMotion()
-  const end = useRef<HTMLSpanElement>(null)
   const screen = s.current?.screen
   const data = s.current?.data ?? {}
-  const pendingQuestion = (screen === 'question' || screen === 'sorry') && !s.busy && !s.composing
-  const options = pendingQuestion ? (data.options ?? []) : []
-  // Our own budget buttons only when the AI's suggested answers do not already offer amounts.
-  const showBudgetPicks =
-    pendingQuestion && asksAboutBudget(data.question) && s.budget == null && !options.some((o) => /\$|\d/.test(o))
   const last = s.talk[s.talk.length - 1]
+  const seen = useRef(-1) // how many messages were already scrolled to
 
-  // Keep the newest message in view. Scrolls only the page's own scroll area (scrollIntoView
-  // would also scroll the demo stage around the phone frame).
-  useEffect(() => {
+  // A new answer from the AI lands with its start at the top (the photo it saw, then what it
+  // says); the customer's own message, and "thinking", keep the newest line in view at the end.
+  useLayoutEffect(() => {
+    const before = seen.current
+    seen.current = s.talk.length
     if (s.talk.length === 0 && !s.busy) return
-    let el = end.current?.parentElement ?? null
-    while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement
-    const area = el
-    const toEnd = () => area?.scrollTo({ top: area.scrollHeight, behavior: reduceMotion ? 'auto' : 'smooth' })
-    toEnd()
+    const fresh = before < 0 ? [] : s.talk.slice(before)
+    const firstBot = fresh.find((m) => m.who === 'bot')
+    const run = () => {
+      if (firstBot && !s.busy) {
+        scrollAreaTo(document.querySelector<HTMLElement>(`[data-anchor="m-${firstBot.id}"]`), 'start', !reduceMotion)
+      } else if (!firstBot) {
+        scrollAreaTo(null, 'end', !reduceMotion && before >= 0)
+      }
+    }
+    run()
     // once more after photos have decoded and grown the conversation
-    const later = window.setTimeout(toEnd, 400)
+    const later = window.setTimeout(run, 400)
     return () => window.clearTimeout(later)
-  }, [s.talk.length, s.busy, screen, options.length, reduceMotion])
-
-  const answer = (text: string) => void s.sendRequest({ text, photo: null, voice: null, budget: null })
-  const sendBudget = (n: number) =>
-    void s.sendRequest({ text: `My budget is about $${n}`, photo: null, voice: null, budget: n })
+  }, [s.talk.length, s.busy, screen, reduceMotion])
 
   return (
     <VStack gap={4}>
@@ -252,7 +323,13 @@ export function Conversation({ s }: { s: PhoneSession }) {
       {s.talk.length > 0 && (
         <ChatMessageList align="top" gap={3}>
           {s.talk.map((m) => (
-            <Bubble key={m.id} m={m} onRetry={(id) => void s.retryMessage(id)} isBusy={!!s.busy} />
+            <Bubble
+              key={m.id}
+              m={m}
+              onRetry={(id) => void s.retryMessage(id)}
+              isBusy={!!s.busy}
+              photo={m.kind === 'understood' ? photoBefore(s.talk, m.id) : undefined}
+            />
           ))}
           {screen === 'sorry' && data.question && !s.busy && (
             <ChatMessage sender="assistant">
@@ -271,38 +348,12 @@ export function Conversation({ s }: { s: PhoneSession }) {
       )}
 
       {s.composing && !s.busy && (
-        <VStack gap={1} className="compose-prompt">
+        <VStack gap={1} className="compose-prompt" data-anchor="compose">
           <Heading level={2}>What should we change?</Heading>
           <Text as="p" color="secondary">
             Tell us what's not right, like a lower budget, a different material, or something we missed. We'll make a
             new list.
           </Text>
-        </VStack>
-      )}
-
-      {options.length > 0 && (
-        <VStack gap={2} as="section" aria-label="Tap an answer">
-          <Text type="supporting">Tap an answer, or type your own below</Text>
-          <HStack gap={2} wrap="wrap">
-            {options.map((o) => (
-              <Button key={o} label={o} variant="secondary" size="lg" onClick={() => answer(o)} />
-            ))}
-          </HStack>
-        </VStack>
-      )}
-
-      {showBudgetPicks && (
-        <VStack gap={2} as="section" aria-label="Pick a budget" className="budget-picks">
-          <HStack gap={2} vAlign="center">
-            <Icon icon={CurrencyDollarIcon} color="success" />
-            <Text type="label">Pick a budget for the whole job</Text>
-          </HStack>
-          <HStack gap={2} wrap="wrap">
-            {BUDGET_PICKS.map((n) => (
-              <Button key={n} label={`$${n}`} variant="secondary" size="lg" onClick={() => sendBudget(n)} />
-            ))}
-            <Button label="Other amount" variant="ghost" size="lg" onClick={s.openBudgetField} />
-          </HStack>
         </VStack>
       )}
 
@@ -316,7 +367,6 @@ export function Conversation({ s }: { s: PhoneSession }) {
           endContent={s.notice.retry ? <Button label="Try again" size="lg" onClick={s.notice.retry} /> : undefined}
         />
       )}
-      <span ref={end} className="scroll-end" aria-hidden />
     </VStack>
   )
 }

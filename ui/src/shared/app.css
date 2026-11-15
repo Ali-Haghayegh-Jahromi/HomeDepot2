@@ -56,22 +56,11 @@ body {
   white-space: nowrap;
 }
 
-/* Small links and the photo's remove button: a 44 px tap area around what is drawn. */
-.page-phone .item-card a,
+/* Small links: a 44 px tap area around what is drawn. */
 .page-phone .finished-link a {
   display: inline-block;
   padding-block: var(--spacing-3);
   margin-block: calc(-1 * var(--spacing-3));
-}
-
-.composer :is(.astryx-thumbnail, .astryx-token) button {
-  position: relative;
-}
-
-.composer :is(.astryx-thumbnail, .astryx-token) button::after {
-  content: '';
-  position: absolute;
-  inset: calc(-1 * var(--spacing-3));
 }
 
 .plain-list {
@@ -93,6 +82,12 @@ body {
   color: var(--color-on-accent);
 }
 
+.brand-mark.is-sm {
+  inline-size: var(--spacing-8);
+  block-size: var(--spacing-8);
+  border-radius: var(--radius-inner);
+}
+
 .brand-mark.is-lg {
   inline-size: var(--spacing-12);
   block-size: var(--spacing-12);
@@ -101,32 +96,27 @@ body {
 
 /* ------------------------------------------------------------------ phone: header journey */
 
+/* four thin bars along the header's bottom edge: done (green), now (orange), to come (track) */
 .journey {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--spacing-2);
-  margin: 0;
+  gap: var(--spacing-0-5);
+  margin: 0 calc(-1 * var(--spacing-3));
   padding: 0;
   list-style: none;
+  block-size: var(--spacing-1);
 }
 
 .journey li {
-  display: grid;
-  gap: var(--spacing-1);
-}
-
-.journey-bar {
-  block-size: var(--spacing-1);
-  border-radius: var(--radius-full);
   background: var(--color-track);
   transition: background-color var(--duration-medium) var(--ease-standard);
 }
 
-.journey .is-done .journey-bar {
+.journey .is-done {
   background: var(--color-success);
 }
 
-.journey .is-now .journey-bar {
+.journey .is-now {
   background: var(--color-accent);
 }
 
@@ -137,22 +127,36 @@ body {
 
 /* ------------------------------------------------------------------ phone: conversation */
 
-.how-it-works {
-  display: grid;
-  gap: var(--spacing-3);
-  margin: 0;
-  padding: var(--spacing-4);
-  list-style: none;
-  border-radius: var(--radius-container);
-  background: var(--color-background-card);
-  box-shadow: var(--shadow-low);
+/* examples above the message box: one row that scrolls sideways, edge to edge */
+.example-row {
+  margin-inline: calc(-1 * var(--spacing-3));
+  padding-inline: var(--spacing-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
 }
 
-.how-it-works li {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--spacing-3);
-  align-items: start;
+.example-row::-webkit-scrollbar {
+  display: none;
+}
+
+.example-track {
+  inline-size: max-content;
+}
+
+.attachment {
+  padding-inline-start: var(--spacing-1);
+  border-radius: var(--radius-element);
+  background: var(--color-background-muted);
+}
+
+.attachment-photo {
+  display: block;
+  flex: none;
+  inline-size: var(--size-element-lg);
+  block-size: var(--size-element-lg);
+  object-fit: cover;
+  border-radius: var(--radius-inner);
 }
 
 .bubble-photo-wrap {
@@ -205,13 +209,6 @@ body {
   min-inline-size: 15rem;
 }
 
-.budget-picks {
-  padding: var(--spacing-4);
-  border-radius: var(--radius-container);
-  background: var(--color-background-card);
-  box-shadow: var(--shadow-inset-success);
-}
-
 .composer-recording {
   padding: var(--spacing-3);
   border-radius: var(--radius-container);
@@ -222,62 +219,228 @@ body {
   font-size: var(--font-size-lg);
 }
 
-.scroll-end {
-  display: block;
-  block-size: 0;
-}
 
 /* ------------------------------------------------------------------ phone: items */
 
-.item-card {
-  border-radius: var(--radius-container);
-  transition: box-shadow var(--duration-fast) var(--ease-standard);
-}
-
-/* an alternative to the item above it: indented, joined to it by a dashed line */
-li.is-alternative {
-  display: grid;
+/* "Seen: …": what the AI saw, folded to one line above the list */
+.seen-line > summary {
+  display: flex;
+  align-items: center;
   gap: var(--spacing-2);
-  margin-inline-start: var(--spacing-3);
-  padding-inline-start: var(--spacing-3);
-  border-inline-start: var(--focus-outline-width) dashed var(--color-border-emphasized);
+  min-block-size: var(--size-element-lg);
+  list-style: none;
+  cursor: pointer;
 }
 
-.alt-label {
-  margin: 0;
+.seen-line > summary::-webkit-details-marker {
+  display: none;
 }
 
-.item-card.is-picked {
-  box-shadow: 0 0 0 var(--focus-outline-width) var(--color-accent);
+.seen-line > summary > :nth-child(2) {
+  flex: 1 1 auto;
+  min-inline-size: 0;
 }
 
-.order-badge {
-  display: inline-grid;
-  place-items: center;
+.seen-line > summary:focus-visible {
+  outline: var(--focus-outline-width) solid var(--color-accent);
+  outline-offset: var(--spacing-0-5);
+  border-radius: var(--radius-inner);
+}
+
+.seen-line[open] > summary > :last-child {
+  transform: rotate(180deg);
+}
+
+.seen-line > p {
+  margin: 0 0 var(--spacing-1);
+}
+
+.seen-thumb {
   flex: none;
   inline-size: var(--spacing-8);
   block-size: var(--spacing-8);
-  border-radius: var(--radius-full);
-  border: var(--focus-outline-width) dashed var(--color-border-emphasized);
-  font-weight: var(--font-weight-bold);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-on-accent);
-  transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    transform var(--duration-fast) var(--ease-entrance);
+  object-fit: cover;
+  border-radius: var(--radius-inner);
 }
 
-.is-picked .order-badge {
-  border-style: solid;
-  border-color: var(--color-accent);
+/* one item: a compact row that is itself the button putting it on the route */
+.item-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'tile name price'
+    'tile reason reason'
+    'meta meta mark';
+  column-gap: var(--spacing-3);
+  row-gap: var(--spacing-1);
+  align-items: start;
+  inline-size: 100%;
+  padding: var(--spacing-3);
+  border: 0;
+  border-radius: var(--radius-container);
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-low);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    box-shadow var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.item-row > .dept-tile {
+  grid-area: tile;
+}
+
+.item-row-name {
+  grid-area: name;
+  line-height: 1.3;
+}
+
+.item-row-price {
+  grid-area: price;
+}
+
+.item-row-reason {
+  grid-area: reason;
+}
+
+.item-row-meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-inline-size: 0;
+}
+
+.item-row > .pick-mark {
+  grid-area: mark;
+  justify-self: end;
+  align-self: center;
+}
+
+.item-row-meta {
+  align-self: center;
+  padding-block-start: var(--spacing-1);
+}
+
+.clamp-1,
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.clamp-1 {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.clamp-2 {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.item-row:hover {
+  box-shadow: var(--shadow-med);
+}
+
+.item-row:active {
+  transform: scale(0.985);
+}
+
+.item-row:focus-visible {
+  outline: var(--focus-outline-width) solid var(--color-accent);
+  outline-offset: var(--spacing-0-5);
+}
+
+.item-row:disabled {
+  cursor: default;
+}
+
+.item-row.is-picked {
+  box-shadow:
+    var(--shadow-low),
+    0 0 0 var(--focus-outline-width) var(--color-accent);
+}
+
+.dept-tile {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  inline-size: var(--spacing-12);
+  block-size: var(--spacing-12);
+  border-radius: var(--radius-element);
+  background: var(--color-background-orange);
+  color: var(--color-text-orange);
+}
+
+.pick-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-full);
+  box-shadow: inset 0 0 0 var(--border-width) var(--color-border-emphasized);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.pick-mark.is-on {
   background: var(--color-accent);
+  box-shadow: none;
+  color: var(--color-on-accent);
   animation: pop var(--duration-medium) var(--ease-entrance);
 }
 
-.item-reason {
-  padding: var(--spacing-2) var(--spacing-3);
-  border-radius: var(--radius-element);
+/* the alternatives to an item, folded under it: one choice with it */
+.choice-alts {
+  margin-inline-start: var(--spacing-4);
+  padding-inline-start: var(--spacing-2);
+  border-inline-start: var(--focus-outline-width) dashed var(--color-border-emphasized);
+}
+
+.alt-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-block-size: var(--size-element-lg);
+  padding: 0 var(--spacing-1);
+  border: 0;
+  border-radius: var(--radius-inner);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.alt-toggle:hover {
   background: var(--color-background-muted);
+}
+
+.alt-toggle:focus-visible {
+  outline: var(--focus-outline-width) solid var(--color-accent);
+}
+
+.alt-chevron {
+  display: inline-flex;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.alt-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.choice-alt-list {
+  display: grid;
+  gap: var(--spacing-2);
 }
 
 /* ------------------------------------------------------------------ phone: guiding / arrived */
@@ -290,13 +453,68 @@ li.is-alternative {
   transition: background-color var(--duration-medium) var(--ease-standard);
 }
 
+/* the shelf light is on: the card turns green and glows twice */
+.guide-hero.is-lit,
 .guide-hero.is-here {
   background: var(--color-success);
   color: var(--color-on-success);
 }
 
+.guide-hero.is-lit {
+  animation: hero-glow 1.1s var(--ease-standard) 2;
+}
+
 .guide-hero .hero-sub {
   opacity: 0.85;
+}
+
+.hero-light {
+  padding-block-start: var(--spacing-3);
+  border-block-start: var(--border-width) solid color-mix(in srgb, currentColor 25%, transparent);
+}
+
+.hero-distance {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.shelf-tag {
+  display: block;
+  flex: none;
+  inline-size: var(--spacing-12);
+}
+
+.shelf-tag svg {
+  display: block;
+  inline-size: 100%;
+  overflow: visible;
+}
+
+.shelf-tag-edge {
+  fill: currentColor;
+  opacity: 0.35;
+}
+
+.shelf-tag-card {
+  fill: var(--color-on-dark);
+}
+
+.shelf-tag-line {
+  fill: var(--color-text-disabled);
+}
+
+.shelf-tag-led {
+  fill: var(--color-text-disabled);
+  transition: fill var(--duration-medium) var(--ease-standard);
+}
+
+.shelf-tag.is-lit .shelf-tag-led {
+  fill: var(--color-success);
+  stroke: var(--color-success-muted);
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: led-pulse 1.1s var(--ease-standard) 2;
 }
 
 .arrived-check {
@@ -308,18 +526,6 @@ li.is-alternative {
   background: var(--color-on-success);
   color: var(--color-success);
   animation: pop var(--duration-slow) var(--ease-entrance);
-}
-
-.light-status {
-  padding: var(--spacing-3) var(--spacing-4);
-  border-radius: var(--radius-container);
-  background: var(--color-background-card);
-  box-shadow: var(--shadow-low);
-}
-
-.light-status.is-on {
-  background: var(--color-success-muted);
-  box-shadow: none;
 }
 
 .up-next {
@@ -808,6 +1014,21 @@ li.is-alternative {
   outline-offset: var(--spacing-1);
 }
 
+.kiosk-screen.is-connected {
+  gap: var(--spacing-4);
+}
+
+.kiosk-connected-mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: var(--spacing-12);
+  block-size: var(--spacing-12);
+  border-radius: var(--radius-full);
+  background: var(--color-success);
+  color: var(--color-on-success);
+  animation: pop var(--duration-slow) var(--ease-entrance);
+}
+
 .help-button.is-small {
   inline-size: auto;
   padding: var(--spacing-3) var(--spacing-6);
@@ -1019,9 +1240,24 @@ li.is-alternative {
   }
 }
 
+/* no visit yet: the welcome screen the customer will see, dimmed, with a calm note on top */
+.phone-iframe.is-preview {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .phone-idle {
-  block-size: 100%;
-  padding: var(--spacing-8) var(--spacing-6);
+  position: absolute;
+  inset: 0;
+  padding: var(--spacing-6);
+}
+
+.phone-idle-card {
+  display: block;
+  padding: var(--spacing-4) var(--spacing-5);
+  border-radius: var(--radius-container);
+  background: var(--color-background-surface);
+  box-shadow: var(--shadow-high);
 }
 
 /* store */
@@ -1123,7 +1359,19 @@ li.is-alternative {
 }
 
 .event-list li:first-child {
-  animation: slide-in var(--duration-medium) var(--ease-entrance);
+  animation:
+    slide-in var(--duration-medium) var(--ease-entrance),
+    fresh-row 2s var(--ease-standard);
+}
+
+@keyframes fresh-row {
+  0%,
+  60% {
+    background: var(--color-accent-muted);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 /* n8n's decision nodes, as on the canvas: "Relevant to home repair?" → yes */
@@ -1158,6 +1406,17 @@ li.is-alternative {
 
 .decision-branch::before {
   content: '→ ';
+}
+
+/* a workflow without `trace`: the chips were read off the phone's screen, so they look provisional */
+.decision-path.is-inferred .decision {
+  border-style: dashed;
+  border-color: var(--color-border-emphasized);
+}
+
+.decision-path.is-inferred .decision-branch {
+  background: var(--color-background-muted);
+  color: var(--color-text-secondary);
 }
 
 .event-call {
@@ -1220,7 +1479,7 @@ html.page-studio {
 
 .studio-top {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--spacing-8);
   padding: var(--spacing-4) var(--spacing-8);
@@ -1242,42 +1501,73 @@ html.page-studio {
 .studio-main {
   container-type: size;
   min-block-size: 0;
-  padding: var(--spacing-6) var(--spacing-8) var(--spacing-8);
+  padding: var(--spacing-5) var(--spacing-8) var(--spacing-6);
 }
 
+/*
+ * kiosk | phone | robot. The phone is drawn 1.2x a phone's CSS width (its page is 390 px wide,
+ * scaled up), so its text reads on a compressed recording; the kiosk column narrows once the
+ * customer has scanned the code.
+ */
 .studio-grid {
-  /* the phone column is as wide as a phone that fills the column's height */
-  --phone-h: calc(100cqb - var(--spacing-7) - var(--spacing-3));
+  --phone-h: calc(100cqb - var(--spacing-7) - var(--spacing-5));
   display: grid;
-  grid-template-columns: minmax(16rem, 19rem) calc(var(--phone-h) * 410 / 864) minmax(0, 1fr);
-  gap: var(--spacing-8);
+  grid-template-columns: 17.5rem calc(var(--phone-h) * 470 / 860) minmax(0, 1fr);
+  gap: var(--spacing-7);
   block-size: 100%;
+  min-block-size: 0;
+  transition: grid-template-columns var(--duration-slow) var(--ease-standard);
+}
+
+.studio-grid.is-connected {
+  grid-template-columns: 12.5rem calc(var(--phone-h) * 470 / 860) minmax(0, 1fr);
+}
+
+.studio .phone-device {
+  block-size: min(100cqb, 100cqi * 860 / 470);
+  aspect-ratio: 470 / 860;
+}
+
+.studio .kiosk-screen {
+  padding-inline: var(--spacing-4);
+}
+
+.studio-grid.is-connected .kiosk-screen h2 {
+  font-size: var(--font-size-xl);
+}
+
+/* the robot: one status line, RViz (or the web map), and a tall, legible event log */
+.studio-robot-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(21.25rem, 42%);
+  gap: var(--spacing-4);
   min-block-size: 0;
 }
 
-.studio-robot-body {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--spacing-5);
+.studio-status {
+  padding: var(--spacing-3) var(--spacing-5);
+  border-radius: var(--radius-container);
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-low);
+}
+
+.studio-status .store-head {
   min-block-size: 0;
 }
 
 .studio-screen {
   position: relative;
   display: grid;
-  aspect-ratio: 16 / 9;
-  /* 16:9, as wide as the column, unless that leaves too little room for the log below */
-  inline-size: min(100%, calc((100cqb - var(--spacing-7) - var(--spacing-3) - var(--spacing-5) - 13rem) * 16 / 9));
-  justify-self: center;
+  min-block-size: 0;
   overflow: hidden;
   border-radius: var(--radius-container);
   background: var(--color-background-card);
   box-shadow: var(--shadow-low);
 }
 
+/* RViz's own background is the card's white, so the picture sits in the card without bars */
 .studio-screen.is-rviz {
-  background: var(--color-background-inverted);
-  box-shadow: var(--shadow-high);
+  background: var(--color-background-card);
 }
 
 .rviz-view {
@@ -1297,7 +1587,7 @@ html.page-studio {
 .rviz-loading {
   position: absolute;
   inset: 0;
-  color: var(--color-on-dark);
+  color: var(--color-text-secondary);
 }
 
 .studio-map {
@@ -1307,7 +1597,7 @@ html.page-studio {
   gap: var(--spacing-3);
   min-block-size: 0;
   margin: 0;
-  padding: var(--spacing-5);
+  padding: var(--spacing-4);
 }
 
 .studio-map .store-map {
@@ -1325,34 +1615,62 @@ html.page-studio {
   border-block-start: var(--border-width) solid var(--color-border);
 }
 
-.studio-bottom {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  gap: var(--spacing-5);
-  min-block-size: 0;
-}
-
-.studio-status {
-  display: grid;
-  align-content: start;
-  gap: var(--spacing-3);
-  padding: var(--spacing-4) var(--spacing-5);
-  border-radius: var(--radius-container);
-  background: var(--color-background-card);
-  box-shadow: var(--shadow-low);
-}
-
-.studio-status .store-head {
-  min-block-size: 0;
-}
-
-/* the oldest lines fade out instead of being cut at the card's edge */
-.studio .event-list {
-  mask-image: linear-gradient(to bottom, var(--color-on-dark) 80%, transparent);
-}
-
+/* Live events at reading size for a recording (17 px with the studio's larger root size) */
 .studio .event-log {
   min-block-size: 0;
+  padding: var(--spacing-4) var(--spacing-5);
+}
+
+.studio .event-list {
+  gap: var(--spacing-1-5);
+  /* the oldest lines fade out instead of being cut at the card's edge */
+  mask-image: linear-gradient(to bottom, var(--color-on-dark) 85%, transparent);
+}
+
+.studio .event-list li {
+  grid-template-columns: 5rem 4.5rem minmax(0, 1fr);
+  padding-block: var(--spacing-1-5);
+  font-size: var(--font-size-base);
+}
+
+.studio .decision {
+  font-size: var(--font-size-base);
+}
+
+/* a laptop recording (1440-1700 px wide): the story strip keeps its titles and steps only */
+@media (max-width: 1700px) {
+  .studio-top {
+    gap: var(--spacing-5);
+    padding-inline: var(--spacing-6);
+  }
+  .studio-top .story-text > :last-child,
+  .studio-tagline {
+    display: none;
+  }
+  .studio-top .story-steps {
+    flex-wrap: nowrap;
+  }
+  .studio-top .story-steps li {
+    padding-inline: var(--spacing-1-5);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+  .studio-brand {
+    max-inline-size: none;
+  }
+  .studio-main {
+    padding-inline: var(--spacing-6);
+  }
+  .studio-grid {
+    gap: var(--spacing-5);
+    grid-template-columns: 15rem calc(var(--phone-h) * 470 / 860) minmax(0, 1fr);
+  }
+  .studio-grid.is-connected {
+    grid-template-columns: 11rem calc(var(--phone-h) * 470 / 860) minmax(0, 1fr);
+  }
+  .studio-robot-body {
+    grid-template-rows: auto minmax(0, 1fr) minmax(16rem, 42%);
+  }
 }
 
 /* ------------------------------------------------------------------ motion */
@@ -1365,6 +1683,25 @@ html.page-studio {
   100% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+@keyframes hero-glow {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success) 70%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 var(--spacing-5) color-mix(in srgb, var(--color-success) 0%, transparent);
+  }
+}
+
+@keyframes led-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.6);
   }
 }
 

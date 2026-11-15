@@ -13,6 +13,7 @@ import { NetworkError, webhook } from '../shared/api'
 import { usePolling } from '../shared/hooks'
 import { report } from '../shared/log'
 import type { ErrorReply, Item, ScreenName, ScreenReply } from '../shared/types'
+import { choiceOf, pickIn, shortName } from './groups'
 
 export interface Message {
   id: number
@@ -109,6 +110,10 @@ export function usePhoneSession() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const [canFinishFromInput, setCanFinishFromInput] = useState(true)
   const [budgetFocus, setBudgetFocus] = useState(0)
+  /** Choices whose alternatives are shown (by the main item's SKU). */
+  const [expanded, setExpanded] = useState<string[]>([])
+  /** "Swapped for the composite deck board": a quiet note for a few seconds after a swap. */
+  const [swapNote, setSwapNote] = useState<string | null>(null)
 
   const lastScreen = useRef<ScreenName | null>(saved?.lastScreen ?? null)
   const lastBotText = useRef<string | null>(
@@ -179,7 +184,10 @@ export function usePhoneSession() {
       if (reply.screen === 'items') {
         const skus = (reply.data?.items ?? []).map((i) => i.sku).join(',')
         setItems((old) => {
-          if (old.map((i) => i.sku).join(',') !== skus) setPicked([])
+          if (old.map((i) => i.sku).join(',') !== skus) {
+            setPicked([])
+            setExpanded([])
+          }
           return reply.data?.items ?? []
         })
       }
@@ -345,13 +353,21 @@ export function usePhoneSession() {
    * again"). The message stays, marked "Not sent" with a Try again that resends it as it was,
    * photo or voice note included, so the customer never has to add them again.
    */
+  const autoRetried = useRef(new Set<number>())
+  const retryRef = useRef<(id: number) => Promise<void>>(async () => undefined)
   const notTaken = useCallback((id: number) => {
     setTalk((t) => t.map((m) => (m.id === id ? { ...m, state: 'failed' } : m)))
-    setNotice({
-      tone: 'warning',
-      title: 'The AI is busy for a moment',
-      text: 'Your message was not taken in. Tap Try again under it to send it again, photo included.',
-    })
+    if (!autoRetried.current.has(id)) {
+      // once by itself, after a short pause; then it is the customer's call (Try again under it)
+      autoRetried.current.add(id)
+      setNotice({ tone: 'info', title: 'The AI was busy', text: 'Sending your message again in 3 s…' })
+      window.setTimeout(() => {
+        const m = talkRef.current.find((t) => t.id === id)
+        if (m?.state === 'failed' && !busyRef.current) void retryRef.current(id)
+      }, 3000)
+      return
+    }
+    setNotice({ tone: 'warning', title: 'The AI is still busy', text: 'Your message, photo included, is kept.' })
   }, [])
 
   const sendRequest = useCallback(
@@ -407,10 +423,32 @@ export function usePhoneSession() {
     },
     [act, notTaken],
   )
+  retryRef.current = retryMessage
 
-  const togglePick = useCallback((sku: string) => {
-    setPicked((p) => (p.includes(sku) ? p.filter((s) => s !== sku) : [...p, sku]))
+  // An item and its "instead of" alternatives are one choice: picking one swaps out the other.
+  const pickedRef = useRef(picked)
+  pickedRef.current = picked
+  const swapTimer = useRef(0)
+  const togglePick = useCallback(
+    (sku: string) => {
+      const { picked: next, replaced } = pickIn(items, pickedRef.current, sku)
+      setPicked(next)
+      window.clearTimeout(swapTimer.current)
+      const chosen = items.find((i) => i.sku === sku)
+      if (replaced && chosen) {
+        setSwapNote(`Swapped for the ${shortName(chosen).toLowerCase()}`)
+        swapTimer.current = window.setTimeout(() => setSwapNote(null), 3500)
+      } else setSwapNote(null)
+      // keep a chosen alternative in view
+      const main = choiceOf(items, sku)[0]
+      if (main && main !== sku) setExpanded((e) => (e.includes(main) ? e : [...e, main]))
+    },
+    [items],
+  )
+  const toggleExpanded = useCallback((main: string) => {
+    setExpanded((e) => (e.includes(main) ? e.filter((s) => s !== main) : [...e, main]))
   }, [])
+  useEffect(() => () => window.clearTimeout(swapTimer.current), [])
 
   const confirm = useCallback(() => act('confirm', 'help/confirm', { skus: picked }), [act, picked])
   const done = useCallback(() => act('next', 'help/next', {}), [act])
@@ -452,6 +490,9 @@ export function usePhoneSession() {
     sendRequest,
     retryMessage,
     togglePick,
+    expanded,
+    toggleExpanded,
+    swapNote,
     confirm,
     done,
     anythingElse,

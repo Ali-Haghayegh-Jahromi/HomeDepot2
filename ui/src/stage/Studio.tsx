@@ -24,6 +24,7 @@ import {
   isDocked,
   Kiosk,
   MapLegend,
+  NewVisit,
   PanelTitle,
   PhoneFrame,
   StoreHead,
@@ -132,14 +133,17 @@ export function StudioApp() {
           <BrandMark size="lg" />
           <VStack gap={0}>
             <Heading level={1}>Aisle Guide</Heading>
-            <Text type="supporting">Describe the repair. The AI finds the parts. A robot walks you to them.</Text>
+            <Text type="supporting" className="studio-tagline">
+              Describe the repair. The AI finds the parts. A robot walks you to them.
+            </Text>
           </VStack>
         </HStack>
         <StoryStrip flow={st.flow} />
+        {st.kiosk.kind === 'visit' && <NewVisit st={st} isCompact />}
       </header>
       <main className="studio-main">
-        <div className="studio-grid">
-          <Kiosk st={st} docked={docked} />
+        <div className={st.connected ? 'studio-grid is-connected' : 'studio-grid'}>
+          <Kiosk st={st} docked={docked} isStudio />
           <PhoneFrame session={st.session} onLiveChange={st.mirrorChanged} />
           <section className="panel studio-robot" aria-labelledby="robot-title">
             <PanelTitle
@@ -163,6 +167,9 @@ export function StudioApp() {
               }
             />
             <div className="studio-robot-body">
+              <section className="studio-status" aria-label="The guide robot">
+                <StoreHead st={st} docked={docked} />
+              </section>
               <div className={showRviz ? 'studio-screen is-rviz' : 'studio-screen'}>
                 {showRviz ? (
                   <RvizView url={url} />
@@ -196,15 +203,7 @@ export function StudioApp() {
                   map
                 )}
               </div>
-              <div className="studio-bottom">
-                <section className="studio-status" aria-labelledby="studio-status-title">
-                  <Text type="label" color="secondary" id="studio-status-title">
-                    Guide robot
-                  </Text>
-                  <StoreHead st={st} docked={docked} />
-                </section>
-                <EventLog log={st.log} />
-              </div>
+              <EventLog log={st.log} />
             </div>
           </section>
         </div>

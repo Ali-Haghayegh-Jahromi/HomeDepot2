@@ -5,7 +5,7 @@ import { getJSON, NetworkError, webhook } from '../shared/api'
 import { usePolling } from '../shared/hooks'
 import { report } from '../shared/log'
 import { loadRuntime } from '../shared/runtime'
-import type { Health, ScreenName, ScreenReply, StartReply, TourStatus } from '../shared/types'
+import type { Health, ScreenName, ScreenReply, StartReply, TourStatus, Trace } from '../shared/types'
 import type { FlowKey } from './flow'
 
 export type Actor = 'kiosk' | 'phone' | 'ai' | 'n8n' | 'robot' | 'light'
@@ -19,7 +19,14 @@ export interface LogEntry {
   call?: string
   /** The n8n decision nodes this step went through, as [node name, branch taken]. */
   decisions?: Decision[]
+  /** n8n's execution id of the run behind this entry (from the reply's trace): "Open in n8n". */
+  execution?: string
+  /** The decisions were read off the phone's screen (a workflow without `trace`), not reported by n8n. */
+  inferred?: boolean
 }
+
+/** The n8n editor's page for one execution (n8n listens on this computer only). */
+export const executionUrl = (id: string) => `http://localhost:5678/workflow/hdGuideRobot00001/executions/${id}`
 
 export type Decision = [node: string, branch: string]
 
@@ -30,8 +37,9 @@ const isBudgetRule = (s: ScreenReply) =>
   /^before i pick the items/i.test(s.message ?? '') || (s.data?.options ?? []).includes('No fixed budget')
 
 /**
- * Which n8n decision nodes (their names on the canvas) led to this screen. Every screen change
- * has exactly one path through the workflow, so the path is read off the change itself.
+ * What a screen change means, in words, and (only for a workflow that does not report its `trace`)
+ * the decision nodes that must have led to it, read off the change itself. These inferred chips
+ * name only nodes the screen proves; n8n's own trace replaces them whenever it is there.
  */
 function decisionsFor(s: ScreenReply, prev: ScreenName | null): { text: string; decisions: Decision[] } | null {
   switch (s.screen) {
@@ -41,16 +49,16 @@ function decisionsFor(s: ScreenReply, prev: ScreenName | null): { text: string; 
       return isBudgetRule(s)
         ? {
             text: 'Asks for the budget before showing any items.',
-            decisions: [RELEVANT, ['Did the AI ask a question or pick items?', 'picked items'], ['Budget known?', 'no']],
+            decisions: [RELEVANT, ['Budget known?', 'no']],
           }
         : {
             text: 'Sends the AI’s follow-up question to the phone.',
-            decisions: [RELEVANT, ['Did the AI ask a question or pick items?', 'asked a question']],
+            decisions: [RELEVANT],
           }
     case 'items':
       return {
         text: `Shows ${s.data?.items?.length ?? 'the'} items from this store’s catalogue.`,
-        decisions: [RELEVANT, ['Did the AI ask a question or pick items?', 'picked items'], ['Budget known?', 'yes']],
+        decisions: [RELEVANT, ['Budget known?', 'yes']],
       }
     case 'guiding':
       return prev === 'arrived'
@@ -170,10 +178,32 @@ export function useStage() {
   const sessionRef = useRef(session)
   sessionRef.current = session
 
-  const say = useCallback((actor: Actor, text: string, call?: string, decisions?: Decision[]) => {
-    const time = new Date().toLocaleTimeString([], { hour12: false })
-    setLog((l) => [{ id: ++nextId.current, time, actor, text, call, decisions }, ...l].slice(0, MAX_LOG))
-  }, [])
+  const say = useCallback(
+    (actor: Actor, text: string, call?: string, decisions?: Decision[], extra?: Pick<LogEntry, 'execution' | 'inferred'>) => {
+      const time = new Date().toLocaleTimeString([], { hour12: false })
+      setLog((l) => [{ id: ++nextId.current, time, actor, text, call, decisions, ...extra }, ...l].slice(0, MAX_LOG))
+    },
+    [],
+  )
+
+  // n8n's own account of each run (reply.trace): logged once per execution id
+  const lastExecution = useRef<string | null>(null)
+  const traceSeen = useRef(false) // this workflow reports traces: never infer decisions
+  const waiting = useRef<{ text: string; at: number } | null>(null) // a screen change whose trace is due
+  const logTrace = useCallback(
+    (t: Trace, text: string) => {
+      lastExecution.current = t.execution_id
+      say(
+        'n8n',
+        text,
+        undefined,
+        t.decisions.map((d) => [d.question, d.answer] as Decision),
+        { execution: t.execution_id },
+      )
+    },
+    [say],
+  )
+  const [phoneLive, setPhoneLive] = useState(false)
 
   // ------------------------------------------------------------------ kiosk
   const pressHelp = useCallback(async () => {
@@ -195,7 +225,12 @@ export function useStage() {
       setSessionParam(id)
       setLog([]) // each visit (each recording take) starts with a clean event log
       setPhone(null)
+      setPhoneLive(false)
       lastScreen.current = null
+      waiting.current = null
+      const startTrace = (res.data as StartReply & { trace?: Trace }).trace
+      if (startTrace) traceSeen.current = true
+      lastExecution.current = startTrace?.execution_id ?? null
       setFlow('start')
       say('kiosk', `Help button pressed. Visit ${id} started and the QR code is on screen.`, 'POST /help/start')
     } catch (e) {
@@ -244,7 +279,12 @@ export function useStage() {
         lastState.current = r.state
       }
       if (light && !lastLight.current) {
-        say('n8n', `Robot within 5 m: shelf tag ${item?.tag_code} lit.`, 'POST /tag/on', [['Near or arrived?', 'near (5 m)']])
+        // with traces, n8n's own run ("Near or arrived? → near") follows as its own entry
+        if (traceSeen.current) say('light', `Robot within 5 m: shelf tag ${item?.tag_code} lit.`, 'POST /tag/on')
+        else
+          say('n8n', `Robot within 5 m: shelf tag ${item?.tag_code} lit.`, 'POST /tag/on', [['Near or arrived?', 'near (5 m)']], {
+            inferred: true,
+          })
         if (lastScreen.current === 'guiding') setFlow('light')
       }
       if (!light && lastLight.current) say('light', 'Item picked up. The shelf light is off.', 'POST /tag/off')
@@ -298,15 +338,33 @@ export function useStage() {
         }
         const s = res.data
         setPhone(s)
-        if (s.screen === lastScreen.current) return
+        const trace = s.trace && s.trace.execution_id ? s.trace : null
+        if (trace) traceSeen.current = true
+        const freshTrace = !!trace && trace.execution_id !== lastExecution.current
+        if (s.screen === lastScreen.current) {
+          // a run that did not change the screen (e.g. the robot's "near"), or the trace of a change
+          if (freshTrace && trace) {
+            logTrace(trace, waiting.current?.text ?? '')
+            waiting.current = null
+          } else if (waiting.current && Date.now() - waiting.current.at > 3000) {
+            say('n8n', waiting.current.text)
+            waiting.current = null
+          }
+          return
+        }
         const prev = lastScreen.current
         if (s.screen === 'input' && prev !== 'anything_else')
           say('phone', 'Phone opened. Waiting for the customer to describe the problem.', 'GET /help/status')
         const understood = (s.data?.understood ?? '').trim()
         if (understood && (s.screen === 'question' || s.screen === 'items'))
-          say('ai', `Gemini understood: “${understood}”`, 'AI 2: understand the need')
+          say('ai', `The AI understood: “${understood}”`, 'AI 2: understand the need')
         const step = decisionsFor(s, prev)
-        if (step) say('n8n', step.text, undefined, step.decisions)
+        if (freshTrace && trace) {
+          logTrace(trace, step?.text ?? '')
+          waiting.current = null
+        } else if (traceSeen.current) {
+          if (step) waiting.current = { text: step.text, at: Date.now() } // its trace comes with the next poll
+        } else if (step) say('n8n', step.text, undefined, step.decisions, { inferred: true })
         report('stage_screen', { screen: s.screen, from: prev, status: s.status, sku: s.data?.item?.sku }, 'info', true)
         setFlow(s.screen === 'sorry' ? 'gate' : s.screen === 'timed_out' ? 'finished' : (s.screen as FlowKey))
         lastScreen.current = s.screen
@@ -320,18 +378,33 @@ export function useStage() {
 
   // ------------------------------------------------------------------ the live mirror of a real phone
   const mirrorChanged = useCallback(
-    (live: boolean) =>
+    (live: boolean) => {
+      setPhoneLive(live)
       say(
         'phone',
         live
           ? "The customer's own phone is connected. The phone frame now mirrors it live."
           : "The customer's phone went quiet. The phone frame shows the stage's own phone page again.",
         live ? 'POST /mirror' : undefined,
-      ),
+      )
+    },
     [say],
   )
 
-  return { kiosk, session, phone, robot, health, reach, flow, log, pressHelp, resetKiosk, mirrorChanged }
+  // n8n's own health (the robot service asks n8n's /healthz): a grey dot reads as "broken" on camera
+  usePolling(async () => {
+    try {
+      const h = await getJSON<{ ok: boolean }>('/n8n/health', 4000)
+      setReach((x) => ({ ...x, n8n: h.ok ? 'ok' : 'down' }))
+    } catch {
+      // an older robot service without /n8n/health: the first answered call decides, as before
+    }
+  }, 10_000)
+
+  /** The customer is past the QR code: their phone is live on the mirror, or the visit has moved on. */
+  const connected = kiosk.kind === 'visit' && (phoneLive || (!!phone && phone.screen !== 'input'))
+
+  return { kiosk, session, phone, robot, health, reach, flow, log, pressHelp, resetKiosk, mirrorChanged, connected }
 }
 
 export type Stage = ReturnType<typeof useStage>

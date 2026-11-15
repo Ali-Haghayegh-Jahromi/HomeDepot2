@@ -1,5 +1,5 @@
 import { mount } from '../shared/Root'
-import { MirrorRoot } from './MirrorView'
+import { MirrorRoot, PreviewRoot } from './MirrorView'
 import { PhoneRoot } from './PhoneApp'
 
 const params = new URLSearchParams(window.location.search)
@@ -12,7 +12,11 @@ if (/Android/i.test(navigator.userAgent)) {
   if (meta && !meta.content.includes('interactive-widget'))
     meta.content += ', interactive-widget=resizes-content'
 }
-if (params.get('view') === 'mirror') {
+if (params.get('view') === 'preview') {
+  // the stage's idle phone: the welcome screen as a customer will see it (read-only, no visit)
+  document.documentElement.classList.add('page-mirror')
+  mount('stage', () => null, <PreviewRoot />)
+} else if (params.get('view') === 'mirror') {
   // the stage's live mirror of the customer's phone (read-only)
   document.documentElement.classList.add('page-mirror')
   mount('stage', () => session, <MirrorRoot />)

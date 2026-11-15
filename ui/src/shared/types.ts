@@ -49,12 +49,26 @@ export interface ScreenData {
   requests?: Summary[]
 }
 
+/** One decision node n8n went through, named as on the canvas: {question: "Relevant to home repair?", answer: "yes"}. */
+export interface TraceDecision {
+  question: string
+  answer: string
+}
+
+/** What the workflow run behind a reply decided (added by n8n; absent in older workflows). */
+export interface Trace {
+  execution_id: string
+  decisions: TraceDecision[]
+}
+
 export interface ScreenReply {
   session_id: string
   screen: ScreenName
   message: string
   data: ScreenData
   status?: 'active' | 'ended' | 'timed_out'
+  /** On an action's reply: that run. On /help/status: the last real run of the visit. */
+  trace?: Trace
 }
 
 export interface ErrorReply {
@@ -80,6 +94,7 @@ export interface Pose {
 export interface TourStop {
   sku: string
   name: string
+  short_name?: string
   aisle: number
   shelf: number
   x: number

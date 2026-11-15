@@ -5,7 +5,7 @@
 // It never calls n8n and never acts: every action of the read-only session does nothing.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PhoneApp } from './PhoneApp'
-import { composerFromWire, MirrorContext, mirrorSession, scrollArea, type MirrorState } from './mirror'
+import { applyScrollPlace, composerFromWire, MirrorContext, mirrorSession, scrollArea, type MirrorState } from './mirror'
 
 /** A phone that has not been heard from for this long is no longer shown. */
 export const SILENT_MS = 10_000
@@ -108,14 +108,18 @@ export function MirrorRoot() {
     const apply = () => {
       const el = scrollArea()
       if (!el) return
+      // the same block at the top edge as on the phone (or pinned to the top / bottom)
+      if (shown.st.at && applyScrollPlace(el, shown.st.at)) return
       const max = el.scrollHeight - el.clientHeight
       el.scrollTo({ top: Math.round(shown.st.scroll * Math.max(0, max)), behavior: 'auto' })
     }
     const raf = window.requestAnimationFrame(apply)
     const later = window.setTimeout(apply, 350) // after a smooth auto-scroll and images
+    const last = window.setTimeout(apply, 900)
     return () => {
       window.cancelAnimationFrame(raf)
       window.clearTimeout(later)
+      window.clearTimeout(last)
     }
   }, [shown])
 
@@ -134,6 +138,46 @@ export function MirrorRoot() {
   return (
     <MirrorContext.Provider value={ctx}>
       <div className="mirror-root" data-live={live || undefined}>
+        <PhoneApp s={s} />
+      </div>
+    </MirrorContext.Provider>
+  )
+}
+
+/** The welcome screen with no visit behind it, for the stage's idle phone (phone.html?view=preview). */
+export function PreviewRoot() {
+  const s = useMemo(
+    () =>
+      mirrorSession(
+        {
+          v: 1,
+          load: 'ready',
+          current: { session_id: '', screen: 'input', message: '', data: {} },
+          talk: [],
+          picked: [],
+          items: [],
+          budget: null,
+          composing: false,
+          completed: 0,
+          canFinishFromInput: false,
+          busy: null,
+          notice: null,
+          composer: null,
+          scroll: 0,
+        },
+        Date.now(),
+        '',
+      ),
+    [],
+  )
+  useEffect(() => {
+    const root = document.getElementById('root')
+    if (root) root.inert = true
+  }, [])
+  const ctx = useMemo(() => ({ view: null, report: null }), [])
+  return (
+    <MirrorContext.Provider value={ctx}>
+      <div className="mirror-root">
         <PhoneApp s={s} />
       </div>
     </MirrorContext.Provider>

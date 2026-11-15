@@ -1,11 +1,9 @@
 import { Badge } from '@astryxdesign/core/Badge'
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
-import { Card } from '@astryxdesign/core/Card'
 import { Heading } from '@astryxdesign/core/Heading'
 import { HStack } from '@astryxdesign/core/HStack'
 import { Icon } from '@astryxdesign/core/Icon'
-import { Link } from '@astryxdesign/core/Link'
 import { ProgressBar } from '@astryxdesign/core/ProgressBar'
 import { StackItem } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
@@ -13,126 +11,151 @@ import { VStack } from '@astryxdesign/core/VStack'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import {
   ArrowRightIcon,
+  ArrowsRightLeftIcon,
   ChatBubbleLeftEllipsisIcon,
   CheckIcon,
-  MapPinIcon,
+  ChevronDownIcon,
+  EyeIcon,
   PlusIcon,
-  SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { money } from '../shared/api'
 import type { Item } from '../shared/types'
-import { Understood } from './Conversation'
+import { photoBefore } from './Conversation'
+import { DepartmentTile } from './departments'
+import { choicesOf, roleOf, type Choice } from './groups'
 import type { PhoneSession } from './usePhoneSession'
 
-/**
- * The AI tags each item with what it is for (main, alternative, tool) and lists them in that order:
- * each main item followed by its alternative, tools last. Untagged items count as the fix itself.
- */
-const GROUPS = [
-  { key: 'fix', title: 'Fixes it', hint: 'What the repair itself needs' },
-  { key: 'tool', title: "Tools you'll need", hint: 'Skip any you already have at home' },
-] as const
-const roleOf = (i: Item) => (i.role === 'tool' || i.role === 'alternative' ? i.role : 'main')
-
-/** The photo the customer sent and what the AI saw in it, above the item list. */
-function SeenPhoto({ s }: { s: PhoneSession }) {
+/** What the AI saw, folded to one line above the list ("Seen: …"); the photo beside it. */
+function Seen({ s }: { s: PhoneSession }) {
   const seen = [...s.talk].reverse().find((m) => m.kind === 'understood')
   if (!seen) return null
-  const photo = [...s.talk].reverse().find((m) => m.who === 'me' && m.photo)?.photo
+  const photo = seen.media === 'photo' ? photoBefore(s.talk, seen.id) : undefined
   return (
-    <Card padding={3}>
-      <HStack gap={3} vAlign="start">
-        {seen.media === 'photo' && photo && <img className="seen-photo" src={photo} alt="The photo you sent" />}
-        <StackItem size="fill">
-          <Understood m={seen} />
-        </StackItem>
-      </HStack>
-    </Card>
+    <details className="seen-line" data-anchor="seen">
+      <summary>
+        {photo ? (
+          <img className="seen-thumb" src={photo} alt="" />
+        ) : (
+          <Icon icon={EyeIcon} size="sm" color="accent" />
+        )}
+        <Text type="supporting" maxLines={1}>
+          <strong>{seen.media === 'voice' ? 'Heard: ' : 'Seen: '}</strong>
+          {seen.text}
+        </Text>
+        <Icon icon={ChevronDownIcon} size="sm" color="secondary" />
+      </summary>
+      <Text as="p" type="supporting">
+        {seen.text}
+      </Text>
+    </details>
   )
 }
 
 const ordinal = (n: number) => n + (['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] ?? 'th')
 
-const TIER: Record<string, { label: string; variant: 'neutral' | 'blue' | 'orange' }> = {
-  good: { label: 'Good', variant: 'neutral' },
-  better: { label: 'Better', variant: 'blue' },
-  best: { label: 'Best', variant: 'orange' },
+/** The catalogue's quality tier, said as what it means for the customer. */
+const TIER: Record<string, { label: string; variant: 'blue' | 'green' | 'yellow' }> = {
+  good: { label: 'Budget pick', variant: 'blue' },
+  better: { label: 'Best value', variant: 'green' },
+  best: { label: 'Pro grade', variant: 'yellow' },
 }
 
-function ItemCard({
+/**
+ * One item as a compact row (under 140 px on a phone): the whole row is the button that puts it on
+ * the route or takes it off. An alternative says "Choose instead": picking it swaps out its main item.
+ */
+function ItemRow({
   item,
   order,
   onToggle,
   isDisabled,
+  isAlternative,
 }: {
   item: Item
   order: number
   onToggle: () => void
   isDisabled: boolean
+  isAlternative?: boolean
 }) {
   const picked = order > 0
   const tier = TIER[String(item.quality_tier ?? '').toLowerCase()]
   return (
-    <article className={picked ? 'item-card is-picked' : 'item-card'} aria-label={item.item_name}>
-      <Card padding={4}>
-        <VStack gap={3}>
-          <HStack gap={3} vAlign="start">
-            <span className="order-badge" aria-hidden>
-              {picked ? order : ''}
-            </span>
-            <StackItem size="fill">
-              <VStack gap={1}>
-                <Heading level={3}>{item.item_name}</Heading>
-                <HStack gap={2} vAlign="center" wrap="wrap">
-                  {item.brand && <Text type="supporting">{item.brand}</Text>}
-                  {tier && <Badge label={tier.label} variant={tier.variant} />}
-                </HStack>
-              </VStack>
-            </StackItem>
-            <Text type="large" weight="bold" hasTabularNumbers>
-              {money(item.price)}
+    <button
+      type="button"
+      className={picked ? 'item-row is-picked' : 'item-row'}
+      aria-pressed={picked}
+      disabled={isDisabled}
+      onClick={onToggle}
+      data-anchor={'i-' + item.sku}
+    >
+      <DepartmentTile item={item} />
+      <Text weight="semibold" as="span" className="item-row-name clamp-2">
+        {item.item_name}
+      </Text>
+      <Text weight="bold" hasTabularNumbers as="span" className="item-row-price">
+        {money(item.price)}
+      </Text>
+      {item.reason && (
+        <Text type="supporting" as="span" className="item-row-reason clamp-1">
+          {item.reason}
+        </Text>
+      )}
+      <span className="item-row-meta">
+        <Badge label={`Aisle ${item.aisle} · Bay ${item.shelf}`} variant="neutral" />
+        {tier && <Badge label={tier.label} variant={tier.variant} />}
+      </span>
+      <span className={picked ? 'pick-mark is-on' : 'pick-mark'}>
+        <Icon icon={picked ? CheckIcon : isAlternative ? ArrowsRightLeftIcon : PlusIcon} size="sm" color="inherit" />
+        {picked ? `${ordinal(order)} stop` : isAlternative ? 'Choose instead' : 'Add'}
+      </span>
+    </button>
+  )
+}
+
+function ChoiceRows({ c, s }: { c: Choice; s: PhoneSession }) {
+  const order = (i: Item) => s.picked.indexOf(i.sku) + 1
+  const open = s.expanded.includes(c.main.sku)
+  const n = c.alternatives.length
+  const altPicked = c.alternatives.some((a) => s.picked.includes(a.sku))
+  return (
+    <li className="choice">
+      <ItemRow item={c.main} order={order(c.main)} onToggle={() => s.togglePick(c.main.sku)} isDisabled={!!s.busy} />
+      {n > 0 && (
+        <VStack gap={2} className="choice-alts">
+          <button
+            type="button"
+            className="alt-toggle"
+            aria-expanded={open}
+            onClick={() => s.toggleExpanded(c.main.sku)}
+            data-anchor={'a-' + c.main.sku}
+          >
+            <Icon icon={ArrowsRightLeftIcon} size="sm" color="secondary" />
+            <Text type="supporting" as="span">
+              {altPicked ? 'Swapped in instead' : n === 1 ? '1 alternative' : `${n} alternatives`}
+              {!open && ` · ${c.alternatives.map((a) => money(a.price)).join(', ')}`}
             </Text>
-          </HStack>
-
-          {item.reason && (
-            <HStack gap={2} vAlign="start" className="item-reason">
-              <Icon icon={SparklesIcon} size="sm" color="accent" />
-              <Text as="p">{item.reason}</Text>
-            </HStack>
+            <span className={open ? 'alt-chevron is-open' : 'alt-chevron'} aria-hidden>
+              <Icon icon={ChevronDownIcon} size="sm" color="secondary" />
+            </span>
+          </button>
+          {open && (
+            <ul className="plain-list choice-alt-list" aria-label={`Instead of ${c.main.item_name}`}>
+              {c.alternatives.map((a) => (
+                <li key={a.sku}>
+                  <ItemRow
+                    item={a}
+                    order={order(a)}
+                    onToggle={() => s.togglePick(a.sku)}
+                    isDisabled={!!s.busy}
+                    isAlternative
+                  />
+                </li>
+              ))}
+            </ul>
           )}
-
-          <VStack gap={1}>
-            <HStack gap={1} vAlign="center" wrap="wrap">
-              <Icon icon={MapPinIcon} size="sm" color="secondary" />
-              <Text type="label" className="nowrap">
-                Aisle {item.aisle} · Bay {item.shelf}
-              </Text>
-              {item.department && <Text type="supporting">· {item.department}</Text>}
-            </HStack>
-            {item.specs && <Text type="supporting">{item.specs}</Text>}
-          </VStack>
-
-          <HStack gap={2} vAlign="center">
-            <StackItem size="fill">
-              {item.item_url && (
-                <Link href={item.item_url} target="_blank" rel="noopener noreferrer" isExternalLink type="supporting">
-                  Product details
-                </Link>
-              )}
-            </StackItem>
-            <Button
-              label={picked ? `${ordinal(order)} stop` : 'Add to route'}
-              variant={picked ? 'primary' : 'secondary'}
-              size="lg"
-              icon={<Icon icon={picked ? CheckIcon : PlusIcon} />}
-              tooltip={picked ? 'Tap to remove from your route' : undefined}
-              isDisabled={isDisabled}
-              onClick={onToggle}
-            />
-          </HStack>
         </VStack>
-      </Card>
-    </article>
+      )}
+    </li>
   )
 }
 
@@ -150,19 +173,13 @@ export function ItemsList({ s }: { s: PhoneSession }) {
       />
     )
   }
-  const groups = GROUPS.map((g) => ({
-    ...g,
-    items: items.filter((i) => (roleOf(i) === 'tool') === (g.key === 'tool')),
-  })).filter((g) => g.items.length > 0)
-  // Headings only when the list has both: items for the fix and tools.
-  const grouped = groups.length > 1
+  const choices = choicesOf(items)
+  const fix = choices.filter((c) => roleOf(c.main) !== 'tool')
+  const tools = choices.filter((c) => roleOf(c.main) === 'tool')
   return (
     <VStack gap={4}>
-      <SeenPhoto s={s} />
-      <VStack gap={1}>
-        <Text type="label" color="accent">
-          {items.length} items for your repair
-        </Text>
+      <Seen s={s} />
+      <VStack gap={1} data-anchor="items-head">
         <Heading level={1}>Here's what you need</Heading>
         {s.current?.message && (
           <Text as="p" color="secondary">
@@ -170,33 +187,28 @@ export function ItemsList({ s }: { s: PhoneSession }) {
           </Text>
         )}
       </VStack>
-      {groups.map((g) => (
-        <VStack gap={3} as="section" key={g.key} aria-label={g.title}>
-          {grouped && (
-            <VStack gap={0}>
-              <Heading level={2}>{g.title}</Heading>
-              <Text type="supporting">{g.hint}</Text>
-            </VStack>
-          )}
-          <VStack gap={3} as="ul" className="plain-list" aria-label={grouped ? g.title : 'Suggested items'}>
-            {g.items.map((i) => (
-              <li key={i.sku} className={roleOf(i) === 'alternative' ? 'is-alternative' : undefined}>
-                {roleOf(i) === 'alternative' && (
-                  <Text type="supporting" as="p" className="alt-label">
-                    Or instead of the item above
-                  </Text>
-                )}
-                <ItemCard
-                  item={i}
-                  order={s.picked.indexOf(i.sku) + 1}
-                  onToggle={() => s.togglePick(i.sku)}
-                  isDisabled={!!s.busy}
-                />
-              </li>
+      {fix.length > 0 && (
+        <VStack gap={2} as="ul" className="plain-list" aria-label="For the repair">
+          {fix.map((c) => (
+            <ChoiceRows key={c.main.sku} c={c} s={s} />
+          ))}
+        </VStack>
+      )}
+      {tools.length > 0 && (
+        <VStack gap={2} as="section" aria-labelledby="tools-title" data-anchor="tools">
+          <HStack gap={2} vAlign="center" wrap="wrap">
+            <Text type="label" id="tools-title">
+              Tools for the job
+            </Text>
+            <Text type="supporting">skip any you already have</Text>
+          </HStack>
+          <VStack gap={2} as="ul" className="plain-list">
+            {tools.map((c) => (
+              <ChoiceRows key={c.main.sku} c={c} s={s} />
             ))}
           </VStack>
         </VStack>
-      ))}
+      )}
       {s.notice && (
         <Banner
           status={s.notice.tone}
@@ -206,29 +218,26 @@ export function ItemsList({ s }: { s: PhoneSession }) {
           onDismiss={s.dismissNotice}
         />
       )}
-      <VStack gap={2} hAlign="start" as="section" aria-label="Other options">
-        <Text type="supporting">Not quite right?</Text>
-        <HStack gap={2} wrap="wrap">
+      <HStack gap={2} wrap="wrap" as="section" aria-label="Other options" data-anchor="items-other">
+        <Button
+          label="Ask for something different"
+          variant="secondary"
+          size="lg"
+          icon={<Icon icon={ChatBubbleLeftEllipsisIcon} />}
+          isDisabled={!!s.busy}
+          onClick={() => s.setComposing(true)}
+        />
+        {s.picked.length === 0 && (
           <Button
-            label="Ask for something different"
-            variant="secondary"
+            label="I don't need any of these"
+            variant="ghost"
             size="lg"
-            icon={<Icon icon={ChatBubbleLeftEllipsisIcon} />}
             isDisabled={!!s.busy}
-            onClick={() => s.setComposing(true)}
+            isLoading={s.busy?.kind === 'confirm'}
+            onClick={() => void s.confirm()}
           />
-          {s.picked.length === 0 && (
-            <Button
-              label="I don't need any of these"
-              variant="ghost"
-              size="lg"
-              isDisabled={!!s.busy}
-              isLoading={s.busy?.kind === 'confirm'}
-              onClick={() => void s.confirm()}
-            />
-          )}
-        </HStack>
-      </VStack>
+        )}
+      </HStack>
     </VStack>
   )
 }
@@ -242,17 +251,21 @@ export function ItemsFooter({ s }: { s: PhoneSession }) {
       <HStack gap={3} vAlign="center">
         <StackItem size="fill">
           <VStack gap={0}>
-            <Text type="label">{n ? `${n} item${n > 1 ? 's' : ''} on your route` : 'No items added yet'}</Text>
+            <Text type="label">{n ? `${n} item${n > 1 ? 's' : ''} on your route` : 'Tap an item to add it'}</Text>
             <Text type="supporting" aria-live="polite">
               {s.busy?.kind === 'confirm'
                 ? 'Writing your repair steps and calling the robot…'
-                : !n
-                  ? 'Add what you need, in pick-up order'
-                  : s.budget != null
-                    ? over
-                      ? `${money(total - s.budget)} over your ${money(s.budget)} budget`
-                      : `${money(s.budget - total)} left of your ${money(s.budget)} budget`
-                    : 'Prices before tax'}
+                : s.swapNote
+                  ? s.swapNote
+                  : !n
+                    ? s.budget != null
+                      ? `Budget ${money(s.budget)} · nothing added yet`
+                      : 'Add what you need, in pick-up order'
+                    : s.budget != null
+                      ? over
+                        ? `${money(total - s.budget)} over your ${money(s.budget)} budget`
+                        : `${money(s.budget - total)} left of your ${money(s.budget)} budget`
+                      : 'Prices before tax'}
             </Text>
           </VStack>
         </StackItem>
@@ -271,7 +284,7 @@ export function ItemsFooter({ s }: { s: PhoneSession }) {
       )}
       <Button
         label={n ? `Guide me to ${n} item${n > 1 ? 's' : ''}` : 'Add an item to start'}
-        variant="primary"
+        variant={n ? 'primary' : 'secondary'}
         size="lg"
         width="100%"
         icon={<Icon icon={ArrowRightIcon} />}

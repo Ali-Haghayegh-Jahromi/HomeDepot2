@@ -6,14 +6,13 @@ import { HStack } from '@astryxdesign/core/HStack'
 import { Icon } from '@astryxdesign/core/Icon'
 import { Layout, LayoutContent, LayoutFooter, LayoutHeader } from '@astryxdesign/core/Layout'
 import { Skeleton } from '@astryxdesign/core/Skeleton'
-import { StackItem } from '@astryxdesign/core/Stack'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { ArrowLeftIcon, ArrowPathIcon, ClockIcon, QrCodeIcon, WifiIcon } from '@heroicons/react/24/outline'
 import type { ScreenName } from '../shared/types'
 import { BrandMark } from '../shared/BrandMark'
 import { Composer } from './Composer'
-import { Conversation } from './Conversation'
+import { Conversation, QuickReplies } from './Conversation'
 import { GuideFooter, GuideScreen } from './Guide'
 import { ItemsFooter, ItemsList } from './Items'
 import { MirrorContext, useMirrorPublisher, type ComposerView } from './mirror'
@@ -21,32 +20,22 @@ import { usePhoneSession, type PhoneSession } from './usePhoneSession'
 import { AnythingElse, AnythingElseFooter, Finished } from './Wrapup'
 
 const JOURNEY = ['Describe', 'Choose', 'Find', 'Wrap up'] as const
+/** Where the visit is: 0-3 = that step now; 4 = all four done (the visit is over). */
 const stepOf = (screen: ScreenName | undefined, composing: boolean): number => {
   if (!screen || composing) return 0
   if (screen === 'items') return 1
   if (screen === 'guiding' || screen === 'arrived') return 2
-  if (screen === 'anything_else' || screen === 'finished' || screen === 'timed_out') return 3
+  if (screen === 'anything_else') return 3
+  if (screen === 'finished' || screen === 'timed_out') return 4
   return 0
 }
 
+/** A thin four-part bar along the header's bottom edge (it is the header's divider). */
 function Journey({ step }: { step: number }) {
   return (
-    <ol className="journey" aria-label={`Step ${step + 1} of 4: ${JOURNEY[step]}`}>
+    <ol className="journey" aria-hidden>
       {JOURNEY.map((label, i) => (
-        <li
-          key={label}
-          className={i < step ? 'is-done' : i === step ? 'is-now' : undefined}
-          aria-current={i === step ? 'step' : undefined}
-        >
-          <span className="journey-bar" />
-          <Text
-            type="supporting"
-            color={i === step ? 'primary' : 'secondary'}
-            weight={i === step ? 'semibold' : undefined}
-          >
-            {label}
-          </Text>
-        </li>
+        <li key={label} className={i < step ? 'is-done' : i === step ? 'is-now' : undefined} />
       ))}
     </ol>
   )
@@ -54,25 +43,23 @@ function Journey({ step }: { step: number }) {
 
 function Header({ s }: { s: PhoneSession }) {
   const showJourney = s.load === 'ready'
+  const step = stepOf(s.current?.screen, s.composing)
+  const where =
+    step >= 4 ? 'Visit complete' : `Step ${step + 1} of 4 · ${JOURNEY[Math.min(step, 3)]}`
   return (
-    <VStack gap={3}>
-      <HStack gap={2} vAlign="center">
-        <BrandMark />
-        <StackItem size="fill">
-          <VStack gap={0}>
-            <Text type="label" weight="bold">
-              Aisle Guide
-            </Text>
-            <Text type="supporting">Your in-store repair helper</Text>
-          </VStack>
-        </StackItem>
-        {s.session && (
-          <Text type="supporting" hasTabularNumbers>
-            Visit {s.session.slice(0, 4).toUpperCase()}
+    <VStack gap={2}>
+      <HStack gap={2} vAlign="center" className="phone-head">
+        <BrandMark size="sm" />
+        <VStack gap={0}>
+          <Text type="label" weight="bold">
+            Aisle Guide
           </Text>
-        )}
+          <Text type="supporting" aria-live="polite">
+            {showJourney ? where : 'Your in-store repair helper'}
+          </Text>
+        </VStack>
       </HStack>
-      {showJourney && <Journey step={stepOf(s.current?.screen, s.composing)} />}
+      {showJourney && <Journey step={step} />}
     </VStack>
   )
 }
@@ -181,16 +168,17 @@ function Footer({ s }: { s: PhoneSession }) {
             onClick={() => void s.finishFromInput()}
           />
         )}
+        <QuickReplies s={s} />
         <Composer
           isBusy={!!s.busy}
           onSend={s.sendRequest}
           budgetFocus={s.budgetFocus}
           placeholder={
             s.composing
-              ? 'e.g. Something cheaper, or composite instead of wood'
+              ? 'e.g. Something cheaper, or composite'
               : screen === 'question'
-                ? 'Type your answer…'
-                : 'Describe what you need help with…'
+                ? 'Or type your answer…'
+                : 'Describe the problem…'
           }
           focusKey={s.composing ? 'composing' : undefined}
         />
@@ -223,7 +211,7 @@ export function PhoneApp({ s }: { s: PhoneSession }) {
     <Layout
       height="fill"
       header={
-        <LayoutHeader hasDivider padding={4} label="Aisle Guide">
+        <LayoutHeader hasDivider={s.load !== 'ready'} padding={3} paddingBlockEnd={s.load === 'ready' ? 0 : 3} label="Aisle Guide">
           <Header s={s} />
         </LayoutHeader>
       }
@@ -236,7 +224,7 @@ export function PhoneApp({ s }: { s: PhoneSession }) {
       }
       footer={
         hasFooter ? (
-          <LayoutFooter hasDivider padding={4} label="Actions">
+          <LayoutFooter hasDivider padding={3} label="Actions">
             {footer}
           </LayoutFooter>
         ) : undefined

@@ -83,3 +83,13 @@ export async function startRecording(): Promise<Recording> {
 }
 
 export const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+
+/**
+ * Opens the composer's camera or photo library from elsewhere on the page (the welcome screen's
+ * "Take a photo" button). The event is handled synchronously, inside the tap, so the browser still
+ * allows the file picker to open.
+ */
+export const PHOTO_PICKER_EVENT = 'aisle-guide:photo-picker'
+export function openPhotoPicker(source: 'camera' | 'library') {
+  window.dispatchEvent(new CustomEvent(PHOTO_PICKER_EVENT, { detail: source }))
+}

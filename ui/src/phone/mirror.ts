@@ -38,7 +38,22 @@ export interface MirrorState {
   busy: { kind: BusyKind; ms: number } | null
   notice: { tone: Notice['tone']; title: string; text?: string; retry: boolean } | null
   composer: ComposerWire | null
-  scroll: number // 0 (top) .. 1 (bottom) of the page's scroll area
+  scroll: number // 0 (top) .. 1 (bottom) of the page's scroll area (fallback for `at`)
+  /** Where the phone is scrolled, in a form that survives a different screen height (see scrollPlace). */
+  at?: ScrollPlace
+  expanded?: string[]
+  swapNote?: string | null
+}
+
+/**
+ * The phone's scroll position as "this block is at the top edge, scrolled this far into it", or
+ * pinned to the top or the bottom. The mirror's page is not exactly as tall as the phone's, so a
+ * 0..1 ratio lands somewhere else; a named block (data-anchor) lands on the same content.
+ */
+export interface ScrollPlace {
+  edge: 'top' | 'bottom' | null
+  anchor: string | null
+  offset: number
 }
 
 // ------------------------------------------------------------------ context for the composer
@@ -117,13 +132,46 @@ export function scrollArea(): HTMLElement | null {
   return el
 }
 
+/** Where the scroll area is now (the phone side). */
+export function scrollPlace(el: HTMLElement): ScrollPlace {
+  if (el.scrollTop <= 2) return { edge: 'top', anchor: null, offset: 0 }
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) return { edge: 'bottom', anchor: null, offset: 0 }
+  const top = el.getBoundingClientRect().top
+  let best: { id: string; y: number } | null = null
+  for (const a of el.querySelectorAll<HTMLElement>('[data-anchor]')) {
+    const y = a.getBoundingClientRect().top - top
+    // the last block that starts at or above the top edge (blocks are in reading order)
+    if (y <= 1 && (!best || y >= best.y)) best = { id: a.dataset.anchor ?? '', y }
+  }
+  return best ? { edge: null, anchor: best.id, offset: Math.round(-best.y) } : { edge: null, anchor: null, offset: 0 }
+}
+
+/** Scrolls the mirror's area to the phone's place; false when the named block is not there. */
+export function applyScrollPlace(el: HTMLElement, at: ScrollPlace): boolean {
+  const max = Math.max(0, el.scrollHeight - el.clientHeight)
+  if (at.edge === 'top') el.scrollTo({ top: 0, behavior: 'auto' })
+  else if (at.edge === 'bottom') el.scrollTo({ top: max, behavior: 'auto' })
+  else {
+    const a = at.anchor ? el.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(at.anchor)}"]`) : null
+    if (!a) return false
+    const y = a.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop
+    el.scrollTo({ top: Math.min(max, Math.max(0, y + at.offset)), behavior: 'auto' })
+  }
+  return true
+}
+
 // ------------------------------------------------------------------ publishing (the real phone)
 
 const DEBOUNCE_MS = 150
 const HEARTBEAT_MS = 3000
 const MAX_BYTES = 480_000 // the service takes up to 512 kB
 
-async function snapshot(s: PhoneSession, composer: ComposerView | null, scroll: number): Promise<MirrorState> {
+async function snapshot(
+  s: PhoneSession,
+  composer: ComposerView | null,
+  scroll: number,
+  at: ScrollPlace | undefined,
+): Promise<MirrorState> {
   const now = Date.now()
   const talk = await Promise.all(
     s.talk.map(async (m) => (m.photo ? { ...m, photo: (await thumbnail(m.photo)) || undefined, hadPhoto: true } : m)),
@@ -151,6 +199,9 @@ async function snapshot(s: PhoneSession, composer: ComposerView | null, scroll: 
         }
       : null,
     scroll,
+    at,
+    expanded: s.expanded,
+    swapNote: s.swapNote,
   }
 }
 
@@ -160,7 +211,11 @@ async function snapshot(s: PhoneSession, composer: ComposerView | null, scroll: 
  */
 export function useMirrorPublisher(s: PhoneSession, composer: ComposerView | null): void {
   const enabled = !!s.session && phoneRole() === 'customer'
-  const latest = useRef({ s, composer, scroll: 0 })
+  const latest = useRef<{ s: PhoneSession; composer: ComposerView | null; scroll: number; at?: ScrollPlace }>({
+    s,
+    composer,
+    scroll: 0,
+  })
   latest.current = { ...latest.current, s, composer }
   const version = useRef(0)
   const timer = useRef(0)
@@ -177,7 +232,9 @@ export function useMirrorPublisher(s: PhoneSession, composer: ComposerView | nul
       let body: string
       if (full) {
         const v = ++version.current // taken before the await, so later changes always get higher numbers
-        const state = await snapshot(latest.current.s, latest.current.composer, latest.current.scroll)
+        const area = scrollArea()
+        if (area) latest.current.at = scrollPlace(area) // where it is right now, not at the last scroll event
+        const state = await snapshot(latest.current.s, latest.current.composer, latest.current.scroll, latest.current.at)
         body = JSON.stringify({ client_id: client.current, role: 'customer', version: v, state })
         if (body.length > MAX_BYTES) {
           // too big with the photos: send it without them (the bubbles then say "Photo")
@@ -229,6 +286,8 @@ export function useMirrorPublisher(s: PhoneSession, composer: ComposerView | nul
     s.canFinishFromInput,
     s.busy,
     s.notice,
+    s.expanded,
+    s.swapNote,
     composer,
   ])
 
@@ -243,8 +302,17 @@ export function useMirrorPublisher(s: PhoneSession, composer: ComposerView | nul
       if (!el) return
       const max = el.scrollHeight - el.clientHeight
       const ratio = max > 0 ? Math.round((el.scrollTop / max) * 1000) / 1000 : 0
-      if (ratio !== latest.current.scroll) {
+      const at = scrollPlace(el)
+      const old = latest.current.at
+      if (
+        ratio !== latest.current.scroll ||
+        !old ||
+        old.edge !== at.edge ||
+        old.anchor !== at.anchor ||
+        old.offset !== at.offset
+      ) {
         latest.current.scroll = ratio
+        latest.current.at = at
         schedule()
       }
     }
@@ -296,6 +364,9 @@ export function mirrorSession(st: MirrorState, receivedAt: number, session: stri
     sendRequest: no,
     retryMessage: async () => undefined,
     togglePick: noop,
+    expanded: st.expanded ?? [],
+    toggleExpanded: noop,
+    swapNote: st.swapNote ?? null,
     confirm: no,
     done: no,
     anythingElse: no,

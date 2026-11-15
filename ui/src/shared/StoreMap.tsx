@@ -13,6 +13,8 @@ interface Props {
   compact?: boolean
   /** Accessible description of what the map shows right now. */
   label: string
+  /** An aisle to highlight when the robot reports no stop of its own (e.g. before it has the route). */
+  focusAisle?: number
 }
 
 interface Point {
@@ -36,7 +38,7 @@ const shortestTurn = (from: number, to: number) => {
   return d
 }
 
-export function StoreMap({ layout, status, compact = false, label }: Props) {
+export function StoreMap({ layout, status, compact = false, label, focusAisle }: Props) {
   const L = layout
   const Y = (y: number) => L.depth - y
   const reduceMotion = usePrefersReducedMotion()
@@ -158,7 +160,7 @@ export function StoreMap({ layout, status, compact = false, label }: Props) {
 
       {/* aisle numbers; the target aisle is highlighted */}
       {L.aisles.map((a) => {
-        const isTarget = item?.aisle === a.number
+        const isTarget = (item?.aisle ?? focusAisle) === a.number
         return (
           <g key={a.number} className={isTarget ? 'map-aisle is-target' : 'map-aisle'}>
             <circle cx={a.x} cy={Y(rackTop) - 1.2} r={badgeR} />

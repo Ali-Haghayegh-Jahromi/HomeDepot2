@@ -1,4 +1,6 @@
+import { AlertDialog } from '@astryxdesign/core/AlertDialog'
 import { Badge } from '@astryxdesign/core/Badge'
+import { IconButton } from '@astryxdesign/core/IconButton'
 import { Button } from '@astryxdesign/core/Button'
 import { Code } from '@astryxdesign/core/Code'
 import { Heading } from '@astryxdesign/core/Heading'
@@ -14,7 +16,7 @@ import { VStack } from '@astryxdesign/core/VStack'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import {
   ArrowPathIcon,
-  DevicePhoneMobileIcon,
+  ArrowTopRightOnSquareIcon,
   ExclamationTriangleIcon,
   MapIcon,
   VideoCameraIcon,
@@ -28,7 +30,7 @@ import type { StoreLayout, TourStatus } from '../shared/types'
 import { useStoreLayout } from '../shared/useRobot'
 import { ACTS, FLOW_ORDER, type FlowKey } from './flow'
 import { QrCode } from './QrCode'
-import { useStage, type Actor, type LogEntry, type Reach, type Stage } from './useStage'
+import { executionUrl, useStage, type Actor, type LogEntry, type Reach, type Stage } from './useStage'
 
 // ---------------------------------------------------------------------------------------------- top bar
 
@@ -39,8 +41,10 @@ function Health({ label, state, detail }: { label: string; state: Reach; detail:
         variant={state === 'ok' ? 'success' : state === 'down' ? 'error' : 'neutral'}
         label={`${label}: ${detail}`}
         tooltip={detail}
+        isPulsing={state === 'unknown'}
       />
       <Text type="label">{label}</Text>
+      {state === 'unknown' && <Text type="supporting">checking…</Text>}
     </HStack>
   )
 }
@@ -73,7 +77,7 @@ function TopBar({ st }: { st: Stage }) {
                   ? 'answering'
                   : st.reach.n8n === 'down'
                     ? 'not reachable'
-                    : 'checked when a visit starts'
+                    : 'checking'
               }
             />
           </li>
@@ -100,6 +104,7 @@ function TopBar({ st }: { st: Stage }) {
             />
           </li>
         </HStack>
+        {st.kiosk.kind === 'visit' && <NewVisit st={st} />}
         <Button
           label="Studio view"
           variant="ghost"
@@ -190,7 +195,49 @@ function RobotDock({ robot, docked }: { robot: TourStatus | null; docked: boolea
   )
 }
 
-export function Kiosk({ st, docked }: { st: Stage; docked: boolean }) {
+/**
+ * "Start a new visit", away from the kiosk (a misclick there would end a take): a small control in
+ * the page header that asks first.
+ */
+export function NewVisit({ st, isCompact }: { st: Stage; isCompact?: boolean }) {
+  const [asking, setAsking] = useState(false)
+  return (
+    <>
+      {isCompact ? (
+        <IconButton
+          label="Start a new visit"
+          tooltip="Start a new visit"
+          icon={<Icon icon={ArrowPathIcon} />}
+          variant="ghost"
+          size="md"
+          onClick={() => setAsking(true)}
+        />
+      ) : (
+        <Button
+          label="New visit"
+          variant="ghost"
+          size="md"
+          icon={<Icon icon={ArrowPathIcon} />}
+          onClick={() => setAsking(true)}
+        />
+      )}
+      <AlertDialog
+        isOpen={asking}
+        onOpenChange={setAsking}
+        title="Start a new visit?"
+        description="The current visit stays open on the customer's phone, but the kiosk shows a new QR code and the event log starts over."
+        actionLabel="Start a new visit"
+        actionVariant="primary"
+        onAction={() => {
+          setAsking(false)
+          void st.pressHelp()
+        }}
+      />
+    </>
+  )
+}
+
+export function Kiosk({ st, docked, isStudio }: { st: Stage; docked: boolean; isStudio?: boolean }) {
   const k = st.kiosk
   return (
     <section className="panel panel-kiosk" aria-labelledby="kiosk-title">
@@ -220,7 +267,22 @@ export function Kiosk({ st, docked }: { st: Stage; docked: boolean }) {
               <Text className="kiosk-muted">Starting your visit…</Text>
             </VStack>
           )}
-          {k.kind === 'visit' && (
+          {k.kind === 'visit' && st.connected && (
+            <VStack gap={3} hAlign="center" className="kiosk-screen is-connected" role="status">
+              <span className="kiosk-connected-mark" aria-hidden>
+                <Icon icon={CheckIcon} color="inherit" size="lg" />
+              </span>
+              <Heading level={2} justify="center" color="inherit" textWrap="balance">
+                Customer connected
+              </Heading>
+              <Text as="p" justify="center" className="kiosk-muted" textWrap="balance">
+                {docked || !st.robot || st.robot.state === 'idle'
+                  ? 'Robot ready. The visit continues on their phone.'
+                  : 'The robot is guiding them. The visit continues on their phone.'}
+              </Text>
+            </VStack>
+          )}
+          {k.kind === 'visit' && !st.connected && (
             <VStack gap={3} hAlign="center" className="kiosk-screen">
               <Heading level={2} justify="center" color="inherit">
                 Scan to start
@@ -231,16 +293,18 @@ export function Kiosk({ st, docked }: { st: Stage; docked: boolean }) {
               <Text type="supporting" justify="center" className="kiosk-muted">
                 Point your phone camera at the code. Your robot guide is waiting beside this kiosk.
               </Text>
-              <Link
-                href={k.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                type="supporting"
-                className="kiosk-link"
-                maxLines={1}
-              >
-                {k.link.replace(/^https?:\/\//, '')}
-              </Link>
+              {!isStudio && (
+                <Link
+                  href={k.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  type="supporting"
+                  className="kiosk-link"
+                  maxLines={1}
+                >
+                  {k.link.replace(/^https?:\/\//, '')}
+                </Link>
+              )}
             </VStack>
           )}
           {k.kind === 'error' && (
@@ -259,15 +323,6 @@ export function Kiosk({ st, docked }: { st: Stage; docked: boolean }) {
           )}
         </div>
         <RobotDock robot={st.robot} docked={docked} />
-        {k.kind === 'visit' && (
-          <Button
-            label="Start a new visit"
-            variant="ghost"
-            size="md"
-            icon={<Icon icon={ArrowPathIcon} />}
-            onClick={() => void st.pressHelp()}
-          />
-        )}
       </VStack>
     </section>
   )
@@ -390,15 +445,31 @@ export function PhoneFrame({
                   </>
                 )
               ) : (
-                <VStack gap={3} hAlign="center" vAlign="center" className="phone-idle">
-                  <Icon icon={DevicePhoneMobileIcon} size="lg" color="secondary" />
-                  <Text type="label" justify="center">
-                    Waiting for a customer
-                  </Text>
-                  <Text type="supporting" justify="center">
-                    Press the help button on the kiosk. The customer scans the QR code and their phone opens this page.
-                  </Text>
-                </VStack>
+                scale > 0 && (
+                  <>
+                    {/* what the customer will see, dimmed, until a visit starts */}
+                    <iframe
+                      title="Preview of the phone page"
+                      src="phone.html?view=preview"
+                      className="phone-iframe is-preview"
+                      tabIndex={-1}
+                      inert
+                      style={frameStyle}
+                    />
+                    <VStack gap={2} hAlign="center" vAlign="center" className="phone-idle" role="status">
+                      <span className="phone-idle-card">
+                        <VStack gap={1} hAlign="center">
+                          <Text type="label" justify="center">
+                            Waiting for a customer
+                          </Text>
+                          <Text type="supporting" justify="center" textWrap="balance">
+                            Press “I need help” on the kiosk and scan the QR code.
+                          </Text>
+                        </VStack>
+                      </span>
+                    </VStack>
+                  </>
+                )
               )}
             </div>
             <span className="phone-home" aria-hidden />
@@ -427,7 +498,7 @@ export function EventLog({ log }: { log: LogEntry[] }) {
         <Heading level={3} id="log-title">
           Live events
         </Heading>
-        <Text type="supporting">newest first · n8n decisions as they happen</Text>
+        <Text type="supporting">newest first · n8n's decisions, from each execution</Text>
       </HStack>
       {log.length === 0 ? (
         <Text type="supporting" as="p" className="event-empty">
@@ -442,24 +513,46 @@ export function EventLog({ log }: { log: LogEntry[] }) {
               </Text>
               <Badge label={ACTOR[e.actor].label} variant={ACTOR[e.actor].variant} />
               <VStack gap={1}>
-                {e.decisions && (
-                  <span className="decision-path" aria-label="n8n decisions">
-                    {e.decisions.map(([node, branch]) => (
-                      <span key={node} className="decision">
+                {e.decisions && e.decisions.length > 0 && (
+                  <span
+                    className={e.inferred ? 'decision-path is-inferred' : 'decision-path'}
+                    aria-label={e.inferred ? 'Decisions read off the phone screen' : 'n8n decisions'}
+                    title={e.inferred ? 'Read off the phone screen (this workflow does not report its trace)' : undefined}
+                  >
+                    {e.decisions.map(([node, branch], i) => (
+                      <span key={node + i} className="decision">
                         <span className="decision-node">{node}</span>
                         <span className="decision-branch">{branch}</span>
                       </span>
                     ))}
                   </span>
                 )}
-                <Text>
-                  {e.text}
-                  {e.call && (
-                    <span className="event-call">
-                      <Code color="secondary">{e.call}</Code>
-                    </span>
-                  )}
-                </Text>
+                {(e.text || e.call || e.execution) && (
+                  <Text>
+                    {e.text}
+                    {e.call && (
+                      <span className="event-call">
+                        <Code color="secondary">{e.call}</Code>
+                      </span>
+                    )}
+                    {e.execution && (
+                      <span className="event-call">
+                        <Link
+                          href={executionUrl(e.execution)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          type="supporting"
+                          tooltip="Opens this run in the n8n editor (on this computer)"
+                        >
+                          <HStack gap={1} vAlign="center" as="span">
+                            Execution {e.execution} · Open in n8n
+                            <Icon icon={ArrowTopRightOnSquareIcon} size="xsm" />
+                          </HStack>
+                        </Link>
+                      </span>
+                    )}
+                  </Text>
+                )}
               </VStack>
             </li>
           ))}
