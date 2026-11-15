@@ -33,7 +33,7 @@ export const ACTS: Act[] = [
   {
     key: 'ai',
     title: 'The AI',
-    caption: 'Gemini understands and picks the items',
+    caption: 'The AI understands and picks the items',
     steps: [
       { key: 'gate', label: 'Relevancy' },
       { key: 'question', label: 'Follow-up' },
